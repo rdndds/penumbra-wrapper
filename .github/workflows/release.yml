@@ -1,15 +1,70 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  release:
+    types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release-info.outputs.version }}
+      tag-name: ${{ steps.release-info.outputs.tag-name }}
+      release-id: ${{ steps.release-info.outputs.release-id }}
+      is-manual: ${{ steps.release-info.outputs.is-manual }}
+    steps:
+      - name: Determine release info
+        id: release-info
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            echo "version=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+            echo "tag-name=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+            echo "release-id=${{ github.event.release.id }}" >> $GITHUB_OUTPUT
+            echo "is-manual=false" >> $GITHUB_OUTPUT
+          else
+            VERSION="v$(date +'%Y.%m.%d-%H%M%S')"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "tag-name=$VERSION" >> $GITHUB_OUTPUT
+            echo "release-id=" >> $GITHUB_OUTPUT
+            echo "is-manual=true" >> $GITHUB_OUTPUT
+          fi
+
+  create-release:
+    needs: prepare
+    runs-on: ubuntu-latest
+    if: needs.prepare.outputs.is-manual == 'true'
+    outputs:
+      release-id: ${{ steps.create-release.outputs.release-id }}
+    steps:
+      - name: Create Release
+        id: create-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          RESPONSE=$(curl -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/releases" \
+            -d "{
+              \"tag_name\": \"$VERSION\",
+              \"name\": \"PenumbraWrapper $VERSION\",
+              \"body\": \"## PenumbraWrapper $VERSION\\n\\n### Installation\\n\\n**Windows:**\\n- Download .msi for standard installation\\n- Download .exe for portable installation\\n\\n**Linux:**\\n- Fedora/openSUSE: Download .rpm\\n- Debian/Ubuntu: Download .deb\\n- Other distros: Download .AppImage (portable, no installation needed)\\n\\n### Notes\\n- This is a pre-release version\\n- Linux AppImage requires webkit2gtk-4.1 to be installed on your system\",
+              \"draft\": false,
+              \"prerelease\": true,
+              \"generate_release_notes\": false
+            }")
+          RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id')
+          echo "release-id=$RELEASE_ID" >> $GITHUB_OUTPUT
+
   build:
+    needs: [prepare, create-release]
+    if: always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
@@ -59,10 +114,10 @@ jobs:
           args: ${{ matrix.args }}
           includeDebug: false
           includeRelease: true
-          tagName: ${{ github.ref_name }}
-          releaseName: 'PenumbraWrapper ${{ github.ref_name }}'
+          tagName: ${{ needs.prepare.outputs.tag-name }}
+          releaseName: 'PenumbraWrapper ${{ needs.prepare.outputs.version }}'
           releaseBody: |
-            ## PenumbraWrapper ${{ github.ref_name }}
+            ## PenumbraWrapper ${{ needs.prepare.outputs.version }}
             
             ### Installation
             
