@@ -60,6 +60,21 @@ export interface AntumbraUpdateResult {
 
 export type OperationType = 'read' | 'write' | null;
 
+// Windows diagnostics types
+export interface WindowsDiagnostics {
+  os_info: string;
+  binary_location: string | null;
+  binary_version: string | null;
+  config_location: string;
+  config_exists: boolean;
+  config_contents: string | null;
+  disk_space_gb: number | null;
+  running_antumbra_processes: string[];
+  permissions_ok: boolean;
+  network_connectivity: boolean;
+  recommendations: string[];
+}
+
 // Scatter file types
 export interface ScatterPartition {
   index: string;                    // "SYS0"

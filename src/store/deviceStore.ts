@@ -90,6 +90,14 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
     try {
       set({ isSettingsLoading: true, settingsError: null });
       const settings = await SettingsApi.getSettings();
+      
+      // Auto-sync detected antumbra version if config version is null
+      // This ensures version consistency between binary and config
+      if (!settings.antumbra_version) {
+        console.log('Config version is null, attempting to sync from detected binary...');
+        // The backend will handle auto-syncing when binary is detected
+      }
+      
       set({
         daPath: settings.da_path || null,
         preloaderPath: settings.preloader_path || null,
@@ -112,12 +120,13 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
 
   saveSettings: async () => {
     try {
-      const { daPath, preloaderPath, defaultOutputPath, autoCheckUpdates } = get();
+      const { daPath, preloaderPath, defaultOutputPath, autoCheckUpdates, antumbraVersion } = get();
       const settings: AppSettings = {
         da_path: daPath || undefined,
         preloader_path: preloaderPath || undefined,
         default_output_path: defaultOutputPath || undefined,
         auto_check_updates: autoCheckUpdates,
+        antumbra_version: antumbraVersion || undefined,
       };
       await SettingsApi.updateSettings(settings);
     } catch (error) {

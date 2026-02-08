@@ -177,8 +177,7 @@ impl AntumbraExecutor {
         store_last_command(&self.binary_path, &self.working_dir, &args);
         log::info!("Executing antumbra with args: {:?} (cwd: {:?})", args, self.working_dir);
 
-        let output = Command::new(&self.binary_path)
-            .args(&args)
+        let output = create_hidden_command(&self.binary_path, &args)
             .current_dir(&self.working_dir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -207,13 +206,30 @@ impl AntumbraExecutor {
             self.working_dir
         );
 
-        let mut child = TokioCommand::new(&self.binary_path)
-            .args(&args)
-            .current_dir(&self.working_dir)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .context("Failed to spawn antumbra process")?;
+        let child = {
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            let mut cmd = TokioCommand::new(&self.binary_path);
+            cmd.args(&args)
+                .current_dir(&self.working_dir)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            // CREATE_NO_WINDOW flag to hide console window
+            cmd.creation_flags(0x08000000);
+            cmd
+        }
+        #[cfg(not(windows))]
+        {
+            TokioCommand::new(&self.binary_path)
+                .args(&args)
+                .current_dir(&self.working_dir)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+        }
+    }
+    .spawn()
+    .context("Failed to spawn antumbra process")?;
 
         set_current_pid(child.id());
 
@@ -331,8 +347,7 @@ impl AntumbraExecutor {
 
     pub fn get_version(&self) -> Result<String> {
         store_last_command(&self.binary_path, &self.working_dir, &["--version".to_string()]);
-        let output = Command::new(&self.binary_path)
-            .arg("--version")
+        let output = create_hidden_command(&self.binary_path, &["--version".to_string()])
             .current_dir(&self.working_dir)
             .stdout(Stdio::piped())
             .output()
@@ -372,7 +387,11 @@ pub fn kill_current_process() -> Result<()> {
                 return Err(anyhow::anyhow!("Failed to kill process pid {}", pid));
             }
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            kill_windows_process(pid)?;
+        }
+        #[cfg(not(any(unix, windows))]
         {
             return Err(anyhow::anyhow!("Process cancellation not supported on this platform"));
         }
@@ -380,6 +399,49 @@ pub fn kill_current_process() -> Result<()> {
 
     clear_current_pid();
     Ok(())
+}
+
+#[cfg(windows)]
+fn kill_windows_process(pid: u32) -> Result<()> {
+    use winapi::um::handleapi::OpenProcess;
+    use winapi::um::processthreadsapi::TerminateProcess;
+    use winapi::um::winnt::{PROCESS_TERMINATE, HANDLE};
+    use winapi::um::errhandlingapi::GetLastError;
+    
+    unsafe {
+        let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
+        if handle.is_null() {
+            let error = GetLastError();
+            return Err(anyhow::anyhow!("Failed to open process {}: Error code {}", pid, error));
+        }
+        
+        let result = TerminateProcess(handle as HANDLE, 1);
+        if result == 0 {
+            let error = GetLastError();
+            return Err(anyhow::anyhow!("Failed to terminate process {}: Error code {}", pid, error));
+        }
+        
+        log::info!("Successfully terminated antumbra process {}", pid);
+        Ok(())
+    }
+}
+
+fn create_hidden_command(binary_path: &std::path::Path, args: &[String]) -> std::process::Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let mut cmd = std::process::Command::new(binary_path);
+        cmd.args(args);
+        // CREATE_NO_WINDOW flag to hide console window
+        cmd.creation_flags(0x08000000);
+        cmd
+    }
+    #[cfg(not(windows))]
+    {
+        let mut cmd = std::process::Command::new(binary_path);
+        cmd.args(args);
+        cmd
+    }
 }
 
 pub fn get_antumbra_updatable_path(app: &AppHandle) -> Result<PathBuf> {
@@ -391,6 +453,28 @@ pub fn get_antumbra_updatable_path(app: &AppHandle) -> Result<PathBuf> {
 
 pub fn get_last_command_info() -> Option<AntumbraCommandInfo> {
     LAST_COMMAND.get_or_init(|| Mutex::new(None)).lock().ok().and_then(|guard| guard.clone())
+}
+
+/// Sync detected antumbra version to configuration if config version is null
+pub fn sync_detected_version_to_config(app: &AppHandle, detected_version: &str) -> Result<()> {
+    use crate::services::config::{load_settings, save_settings};
+    
+    // Load current settings
+    let mut settings = load_settings()
+        .context("Failed to load settings for version sync")?;
+    
+    // Only update if version is None or different
+    if settings.antumbra_version.is_none() || 
+       settings.antumbra_version.as_ref() != Some(&detected_version.to_string()) {
+        settings.antumbra_version = Some(detected_version.to_string());
+        save_settings(&settings)
+            .context("Failed to save synced version to config")?;
+        log::info!("Synced detected antumbra version '{}' to configuration", detected_version);
+    } else {
+        log::debug!("Configuration already contains version {}, no sync needed", detected_version);
+    }
+    
+    Ok(())
 }
 
 fn get_antumbra_working_dir(app: &AppHandle, binary_path: &PathBuf) -> Result<PathBuf> {

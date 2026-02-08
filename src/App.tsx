@@ -14,6 +14,7 @@ import { ConfirmationProvider } from './hooks/confirmationProvider';
 import { AntumbraApi } from './services/api/antumbraApi';
 import { DeviceApi } from './services/api/deviceApi';
 import { ErrorHandler } from './services/utils/errorHandler';
+import { WindowsErrorHandler } from './services/utils/windowsErrorHandler';
 import { useDeviceStore } from './store/deviceStore';
 import toast from 'react-hot-toast';
 
@@ -68,9 +69,13 @@ function AppContent() {
           }
         }
       } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const customMessage = WindowsErrorHandler.getErrorSuggestion(errorMessage);
+        
         ErrorHandler.handle(error, 'Check antumbra updates', {
           showToast: false,
           addToOperationLog: false,
+          customMessage,
         });
       }
     };

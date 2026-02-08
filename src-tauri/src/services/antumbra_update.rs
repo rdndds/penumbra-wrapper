@@ -100,20 +100,34 @@ pub async fn check_for_updates(app: &AppHandle) -> Result<AntumbraUpdateInfo> {
             let latest_version = normalize_version(&release.tag_name);
             let update_available = match (&installed_path, &installed_version, &latest_version) {
                 (None, _, _) => true,
-                (Some(_), _, _) => {
+                (Some(_), None, Some(latest)) => {
+                    // Config version is None, but we have binary - try to detect version
+                    if let Ok(detected_version) = get_installed_version(app).await {
+                        normalize_version(&detected_version).as_deref() != Some(latest)
+                    } else {
+                        log::warn!("Binary exists but version detection failed, assuming update needed");
+                        true
+                    }
+                }
+                (Some(_), Some(installed), Some(latest)) => {
                     if let (Some(installed_checksum), Some(expected_checksum)) =
                         (installed_checksum.as_deref(), Some(checksum.as_str()))
                     {
                         installed_checksum != expected_checksum
-                    } else if let (Some(installed), Some(latest_version)) =
-                        (installed_version.as_deref(), latest_version.as_deref())
-                    {
-                        normalize_version(installed).as_deref() != Some(latest_version)
-                    } else if let Some(installed) = installed_version.as_deref() {
-                        installed.trim() != release.tag_name.trim()
-                    } else {
+                    } else if normalize_version(installed).as_deref() != Some(latest) {
                         true
+                    } else {
+                        false
                     }
+                }
+                (Some(_), Some(installed), None) => {
+                    // We have an installed version but no normalized latest version
+                    installed.trim() != release.tag_name.trim()
+                }
+                (Some(_), _, _) => {
+                    // Default case - if we have binary but version detection fails, assume update needed
+                    log::warn!("Version comparison failed, assuming update needed for safety");
+                    true
                 }
             };
 
@@ -155,11 +169,7 @@ pub async fn download_and_install(app: &AppHandle) -> Result<AntumbraUpdateResul
         fs::create_dir_all(parent).context("Failed to create antumbra bin directory")?;
     }
 
-    if target_path.exists() {
-        fs::remove_file(&target_path).context("Failed to remove existing antumbra binary")?;
-    }
-
-    fs::write(&target_path, &binary_bytes).context("Failed to write antumbra binary")?;
+    safe_replace_binary(&target_path, &binary_bytes, &checksum).await?;
 
     #[cfg(unix)]
     {
@@ -178,6 +188,94 @@ pub async fn download_and_install(app: &AppHandle) -> Result<AntumbraUpdateResul
     }
 
     Ok(AntumbraUpdateResult { version: release.tag_name, path: target_path.display().to_string() })
+}
+
+/// Safely replace binary with Windows-specific handling for file locks and atomic operations
+async fn safe_replace_binary(target_path: &Path, new_binary: &[u8], expected_checksum: &str) -> Result<()> {
+    let temp_path = target_path.with_extension("tmp");
+    
+    log::info!("Starting safe binary replacement: {:?} -> {:?}", temp_path, target_path);
+    
+    // Clean up any existing temporary file
+    if temp_path.exists() {
+        if let Err(e) = fs::remove_file(&temp_path) {
+            log::warn!("Failed to remove existing temp file {:?}: {}", temp_path, e);
+        }
+    }
+
+    // Write new binary to temporary file first
+    fs::write(&temp_path, new_binary)
+        .context("Failed to write antumbra binary to temporary file")?;
+    
+    // Verify checksum of temporary file
+    let temp_checksum = compute_file_checksum(&temp_path)?;
+    if temp_checksum.to_lowercase() != expected_checksum.trim().to_lowercase() {
+        fs::remove_file(&temp_path)?;
+        anyhow::bail!("Checksum verification failed for temporary binary");
+    }
+
+    // Atomic replacement with Windows-specific retry logic
+    #[cfg(windows)]
+    {
+        replace_binary_with_retry(&temp_path, target_path)?;
+    }
+    #[cfg(not(windows))]
+    {
+        fs::rename(&temp_path, target_path)
+            .context("Failed to replace antumbra binary")?;
+    }
+
+    log::info!("Successfully replaced antumbra binary");
+    Ok(())
+}
+
+#[cfg(windows)]
+fn replace_binary_with_retry(temp_path: &Path, target_path: &Path) -> Result<()> {
+    use std::time::Duration;
+    use tokio::time::sleep;
+    
+    for attempt in 0..5 {
+        match fs::rename(temp_path, target_path) {
+            Ok(_) => {
+                return Ok(());
+            }
+            Err(e) => {
+                // Check if it's a file sharing violation (ERROR_SHARING_VIOLATION = 32)
+                #[cfg(windows)]
+                if let Some(raw_error) = e.raw_os_error() {
+                    if raw_error == 32 && attempt < 4 {
+                        log::warn!("File locked (attempt {}/5), retrying in 2 seconds...", attempt + 1);
+                        
+                        // Try to kill any running antumbra process
+                        if let Err(kill_err) = crate::services::antumbra::kill_current_process() {
+                            log::warn!("Failed to kill antumbra process: {}", kill_err);
+                        }
+                        
+                        tokio::spawn(async {
+                            sleep(Duration::from_secs(2)).await;
+                        });
+                        continue;
+                    } else if raw_error == 5 {
+                        // ERROR_ACCESS_DENIED
+                        return Err(anyhow::anyhow!("Access denied when replacing antumbra binary. Please run as Administrator or check antivirus software."));
+                    }
+                }
+                
+                // Log the error with Windows-specific context
+                log::error!("Failed to replace binary (attempt {}/5): {}", attempt + 1, e);
+                
+                if attempt < 4 {
+                    tokio::spawn(async {
+                        sleep(Duration::from_millis(1000)).await;
+                    });
+                    continue;
+                } else {
+                    return Err(anyhow::anyhow!("Failed to replace antumbra binary after 5 attempts: {}. Is antumbra.exe currently running?", e));
+                }
+            }
+        }
+    }
+    unreachable!()
 }
 
 async fn fetch_latest_release() -> Result<ReleaseInfo> {
@@ -301,8 +399,10 @@ fn parse_checksum(contents: &str, asset_name: &str) -> Option<String> {
     None
 }
 
-async fn get_installed_version(app: &AppHandle) -> Result<String> {
+pub async fn get_installed_version(app: &AppHandle) -> Result<String> {
     if let Some(path) = get_existing_antumbra_path(app)? {
+        log::info!("Getting version from antumbra binary at: {:?}", path);
+        
         let output = std::process::Command::new(path)
             .arg("--version")
             .output()
@@ -312,6 +412,14 @@ async fn get_installed_version(app: &AppHandle) -> Result<String> {
         if stdout.is_empty() {
             anyhow::bail!("Antumbra returned an empty version string")
         }
+        
+        log::info!("Detected antumbra version: {}", stdout);
+        
+        // Also sync this version to config if needed
+        if let Err(sync_err) = crate::services::antumbra::sync_detected_version_to_config(app, &stdout) {
+            log::warn!("Failed to sync detected version to config: {}", sync_err);
+        }
+        
         return Ok(stdout);
     }
 

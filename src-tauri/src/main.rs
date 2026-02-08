@@ -92,6 +92,7 @@ async fn main() {
             commands::diagnostics::read_wrapper_log,
             commands::diagnostics::read_antumbra_log,
             commands::diagnostics::get_last_antumbra_command,
+            commands::diagnostics::check_windows_environment,
         ])
         .setup(|_app| {
             // Initialize services on startup

@@ -19,6 +19,7 @@ import { AntumbraApi } from '../services/api/antumbraApi';
 import { executeOperation } from '../services/operations/executeOperation';
 import { generateTimestampedFilename, joinPath } from '../services/utils/pathUtils';
 import { ErrorHandler } from '../services/utils/errorHandler';
+import { WindowsErrorHandler } from '../services/utils/windowsErrorHandler';
 import toast from 'react-hot-toast';
 import type { Partition, AntumbraUpdateInfo } from '../types';
 import { v4 as uuidv4 } from 'uuid';
@@ -171,7 +172,28 @@ export function Dashboard() {
       const info = await AntumbraApi.checkUpdate();
       setUpdateInfo(info);
     } catch (error: unknown) {
-      ErrorHandler.handle(error, 'Download antumbra update', { addToOperationLog: false });
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const customMessage = WindowsErrorHandler.getErrorSuggestion(errorMessage);
+      
+      ErrorHandler.handle(error, 'Download antumbra update', { 
+        addToOperationLog: false,
+        customMessage 
+      });
+      
+      // If it's a Windows-specific error, show troubleshooting help
+      if (WindowsErrorHandler.isWindowsError(errorMessage)) {
+        const steps = WindowsErrorHandler.getTroubleshootingSteps(errorMessage);
+        if (steps.length > 0) {
+          // Add troubleshooting steps to operation log for reference
+          steps.forEach((step, index) => {
+            useOperationStore.getState().addLog({
+              timestamp: new Date().toISOString(),
+              level: 'info',
+              message: `Troubleshooting step ${index + 1}: ${step}`,
+            });
+          });
+        }
+      }
     } finally {
       setIsDownloadingUpdate(false);
     }
