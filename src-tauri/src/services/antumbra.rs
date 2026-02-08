@@ -391,7 +391,7 @@ pub fn kill_current_process() -> Result<()> {
         {
             kill_windows_process(pid)?;
         }
-        #[cfg(not(any(unix, windows))]
+        #[cfg(not(any(unix, windows)))]
         {
             return Err(anyhow::anyhow!("Process cancellation not supported on this platform"));
         }
