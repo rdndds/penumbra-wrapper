@@ -57,7 +57,7 @@ pub fn save_settings(settings: &AppSettings) -> Result<()> {
     Ok(())
 }
 
-fn get_config_path() -> Result<PathBuf> {
+pub fn get_config_path() -> Result<PathBuf> {
     let config_dir = dirs::config_dir()
         .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
 

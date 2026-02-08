@@ -206,7 +206,7 @@ impl AntumbraExecutor {
             self.working_dir
         );
 
-        let child = {
+        let mut child = {
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;

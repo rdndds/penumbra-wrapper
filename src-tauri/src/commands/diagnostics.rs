@@ -4,8 +4,8 @@
 */
 
 use crate::error::AppError;
-use crate::services::antumbra::{AntumbraCommandInfo, get_last_command_info, AntumbraExecutor};
-use crate::services::{config, antumbra_update};
+use crate::services::antumbra::{self, AntumbraCommandInfo, get_last_command_info, AntumbraExecutor};
+use crate::services::config;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
@@ -133,7 +133,7 @@ pub async fn check_windows_environment(app: AppHandle) -> Result<WindowsDiagnost
     }
 
     // Check network connectivity to GitHub
-    diagnostics.network_connectivity = check_github_connectivity().await;
+    diagnostics.network_connectivity = check_github_connectivity();
     if !diagnostics.network_connectivity {
         diagnostics.recommendations.push(
             "Cannot connect to GitHub API. Check your internet connection or firewall."
