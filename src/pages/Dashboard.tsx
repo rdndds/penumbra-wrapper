@@ -17,13 +17,14 @@ import { DeviceApi } from '../services/api/deviceApi';
 import { PartitionApi } from '../services/api/partitionApi';
 import { AntumbraApi } from '../services/api/antumbraApi';
 import { executeOperation } from '../services/operations/executeOperation';
-import { generateTimestampedFilename, joinPath } from '../services/utils/pathUtils';
+import { generateTimestampedFilename, joinPath, getBasename } from '../services/utils/pathUtils';
 import { ErrorHandler } from '../services/utils/errorHandler';
 import { WindowsErrorHandler } from '../services/utils/windowsErrorHandler';
 import toast from 'react-hot-toast';
 import type { Partition, AntumbraUpdateInfo } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { listen } from '@tauri-apps/api/event';
+import { mkdir } from '@tauri-apps/plugin-fs';
 
 interface DownloadProgress {
   bytes_downloaded: number;
@@ -306,9 +307,12 @@ export function Dashboard() {
       return;
     }
 
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const nvramOutputDir = joinPath(defaultOutputPath, `NVRAM-${timestamp}`);
+
     const confirmed = await confirm({
       title: 'Backup NVRAM',
-      message: `This will backup ${availablePartitions.length} critical partitions (${availablePartitions.map(p => p.name).join(', ')}) to your default output folder.\n\nContinue?`,
+      message: `This will backup ${availablePartitions.length} critical partitions (${availablePartitions.map(p => p.name).join(', ')}) to your default output folder under ${getBasename(nvramOutputDir)}.\n\nContinue?`,
       variant: 'info',
       confirmText: 'Backup',
     });
@@ -322,6 +326,15 @@ export function Dashboard() {
     clearLogs();
     setIsFastBackupRunning(true);
     backupCancelReasonRef.current = null;
+
+    try {
+      await mkdir(nvramOutputDir, { recursive: true });
+    } catch (error: unknown) {
+      setIsFastBackupRunning(false);
+      setBackupAbortController(null);
+      ErrorHandler.handle(error, 'Create NVRAM backup folder');
+      return;
+    }
 
     // Create abort controller for cancellation
     const abortController = new AbortController();
@@ -354,7 +367,7 @@ export function Dashboard() {
 
       const partition = availablePartitions[i];
       const filename = generateTimestampedFilename(partition.name, 'img');
-      const outputPath = joinPath(defaultOutputPath, filename);
+      const outputPath = joinPath(nvramOutputDir, filename);
       
       const operationId = uuidv4();
       const result = await executeOperation({

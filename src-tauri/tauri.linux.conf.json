@@ -1,0 +1,16 @@
+{
+  "productName": "penumbra-wrapper",
+  "app": {
+    "enableGTKAppId": true
+  },
+  "bundle": {
+    "linux": {
+      "deb": {
+        "desktopTemplate": "desktop.linux.hbs"
+      },
+      "rpm": {
+        "desktopTemplate": "desktop.linux.hbs"
+      }
+    }
+  }
+}
