@@ -11,7 +11,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
 use tauri::AppHandle;
+use tokio::fs::File;
+use tokio::io::{AsyncWriteExt, BufWriter};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AntumbraUpdateInfo {
@@ -161,15 +164,17 @@ pub async fn download_and_install(app: &AppHandle) -> Result<AntumbraUpdateResul
     let release = fetch_latest_release().await?;
     let (_asset_name, asset_url, checksum) = find_asset_and_checksum(&release).await?;
 
-    let binary_bytes = download_bytes(&asset_url).await?;
-    verify_checksum(&binary_bytes, &checksum)?;
-
     let target_path = get_antumbra_updatable_path(app)?;
     if let Some(parent) = target_path.parent() {
         fs::create_dir_all(parent).context("Failed to create antumbra bin directory")?;
     }
 
-    safe_replace_binary(&target_path, &binary_bytes, &checksum).await?;
+    // Download directly to temp file with retry logic
+    let temp_path = target_path.with_extension("download");
+    download_file_with_retry(&asset_url, &temp_path, &checksum).await?;
+
+    // Replace the old binary with the new one
+    safe_replace_binary(&target_path, &temp_path).await?;
 
     #[cfg(unix)]
     {
@@ -190,38 +195,158 @@ pub async fn download_and_install(app: &AppHandle) -> Result<AntumbraUpdateResul
     Ok(AntumbraUpdateResult { version: release.tag_name, path: target_path.display().to_string() })
 }
 
-/// Safely replace binary with Windows-specific handling for file locks and atomic operations
-async fn safe_replace_binary(target_path: &Path, new_binary: &[u8], expected_checksum: &str) -> Result<()> {
-    let temp_path = target_path.with_extension("tmp");
+/// Download a file with retry logic and streaming to disk
+/// Verifies checksum after successful download
+async fn download_file_with_retry(url: &str, temp_path: &Path, expected_checksum: &str) -> Result<()> {
+    use futures_util::StreamExt;
     
-    log::info!("Starting safe binary replacement: {:?} -> {:?}", temp_path, target_path);
+    const MAX_RETRIES: u32 = 3;
+    const INITIAL_DELAY_MS: u64 = 1000;
     
-    // Clean up any existing temporary file
+    // Clean up any existing temp file
     if temp_path.exists() {
-        if let Err(e) = fs::remove_file(&temp_path) {
+        if let Err(e) = fs::remove_file(temp_path) {
             log::warn!("Failed to remove existing temp file {:?}: {}", temp_path, e);
         }
     }
-
-    // Write new binary to temporary file first
-    fs::write(&temp_path, new_binary)
-        .context("Failed to write antumbra binary to temporary file")?;
     
-    // Verify checksum of temporary file
-    let temp_checksum = compute_file_checksum(&temp_path)?;
-    if temp_checksum.to_lowercase() != expected_checksum.trim().to_lowercase() {
-        fs::remove_file(&temp_path)?;
-        anyhow::bail!("Checksum verification failed for temporary binary");
+    // Create reqwest client with timeout
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(300)) // 5 minute timeout for large files
+        .connect_timeout(Duration::from_secs(30))
+        .build()
+        .context("Failed to create HTTP client")?;
+    
+    for attempt in 0..MAX_RETRIES {
+        log::info!("Downloading update from {} (attempt {}/{})...", url, attempt + 1, MAX_RETRIES);
+        
+        match try_download_file(&client, url, temp_path).await {
+            Ok(()) => {
+                // Verify checksum
+                log::info!("Verifying download checksum...");
+                let downloaded_checksum = compute_file_checksum(temp_path)?;
+                
+                if downloaded_checksum.to_lowercase() == expected_checksum.trim().to_lowercase() {
+                    log::info!("Download successful and checksum verified");
+                    return Ok(());
+                } else {
+                    fs::remove_file(temp_path)
+                        .unwrap_or_else(|e| log::warn!("Failed to remove corrupted temp file: {}", e));
+                    
+                if attempt < MAX_RETRIES - 1 {
+                    let delay = INITIAL_DELAY_MS * (attempt as u64 + 1);
+                    log::warn!(
+                        "Checksum mismatch on attempt {}/{}. Retrying in {}ms...",
+                        attempt + 1,
+                        MAX_RETRIES,
+                        delay
+                    );
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
+                    continue;
+                    } else {
+                        anyhow::bail!("Download failed: Checksum mismatch after {} attempts. The file may be corrupted.", MAX_RETRIES);
+                    }
+                }
+            }
+            Err(e) => {
+                fs::remove_file(temp_path)
+                    .unwrap_or_else(|e| log::warn!("Failed to remove incomplete temp file: {}", e));
+                
+                if attempt < MAX_RETRIES - 1 {
+                    let delay = INITIAL_DELAY_MS * (attempt as u64 + 1);
+                    log::warn!(
+                        "Download failed on attempt {}/{}: {}. Retrying in {}ms...",
+                        attempt + 1,
+                        MAX_RETRIES,
+                        e,
+                        delay
+                    );
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
+                } else {
+                    return Err(e.context(format!("Failed to download after {} attempts", MAX_RETRIES)));
+                }
+            }
+        }
     }
+    
+    unreachable!()
+}
+
+/// Try to download a file once, streaming to disk
+async fn try_download_file(client: &reqwest::Client, url: &str, temp_path: &Path) -> Result<()> {
+    use futures_util::StreamExt;
+    
+    let response = client
+        .get(url)
+        .header("User-Agent", "penumbra-wrapper")
+        .send()
+        .await
+        .context("Failed to start download")?;
+    
+    let response = response
+        .error_for_status()
+        .context("Server returned error status")?;
+    
+    // Get content length for logging
+    if let Some(content_length) = response.content_length() {
+        log::info!("Download size: {} bytes ({:.2} MB)", 
+            content_length, 
+            content_length as f64 / 1_048_576.0
+        );
+    }
+    
+    // Create temp file
+    let file = File::create(temp_path)
+        .await
+        .context("Failed to create temporary file for download")?;
+    
+    let mut writer = BufWriter::new(file);
+    let mut stream = response.bytes_stream();
+    let mut downloaded_bytes: u64 = 0;
+    let mut last_logged_mb: u64 = 0;
+    
+    // Stream chunks to file
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result.context("Error while downloading")?;
+        writer
+            .write_all(&chunk)
+            .await
+            .context("Failed to write to temporary file")?;
+        
+        downloaded_bytes += chunk.len() as u64;
+        
+        // Log progress every 1 MB
+        let current_mb = downloaded_bytes / 1_048_576;
+        if current_mb > last_logged_mb {
+            log::info!("Downloaded {} MB...", current_mb);
+            last_logged_mb = current_mb;
+        }
+    }
+    
+    // Flush and close file
+    writer
+        .flush()
+        .await
+        .context("Failed to flush temporary file")?;
+    
+    drop(writer);
+    
+    log::info!("Download complete: {} bytes total", downloaded_bytes);
+    Ok(())
+}
+
+/// Safely replace binary with Windows-specific handling for file locks and atomic operations
+async fn safe_replace_binary(target_path: &Path, temp_path: &Path) -> Result<()> {
+    log::info!("Starting safe binary replacement: {:?} -> {:?}", temp_path, target_path);
 
     // Atomic replacement with Windows-specific retry logic
     #[cfg(windows)]
     {
-        replace_binary_with_retry(&temp_path, target_path)?;
+        replace_binary_with_retry(temp_path, target_path).await?;
     }
     #[cfg(not(windows))]
     {
-        fs::rename(&temp_path, target_path)
+        fs::rename(temp_path, target_path)
             .context("Failed to replace antumbra binary")?;
     }
 
@@ -230,7 +355,7 @@ async fn safe_replace_binary(target_path: &Path, new_binary: &[u8], expected_che
 }
 
 #[cfg(windows)]
-fn replace_binary_with_retry(temp_path: &Path, target_path: &Path) -> Result<()> {
+async fn replace_binary_with_retry(temp_path: &Path, target_path: &Path) -> Result<()> {
     use std::time::Duration;
     use tokio::time::sleep;
     
@@ -250,9 +375,8 @@ fn replace_binary_with_retry(temp_path: &Path, target_path: &Path) -> Result<()>
                             log::warn!("Failed to kill antumbra process: {}", kill_err);
                         }
                         
-                        tokio::spawn(async {
-                            sleep(Duration::from_secs(2)).await;
-                        });
+                        // Properly await the sleep
+                        sleep(Duration::from_secs(2)).await;
                         continue;
                     } else if raw_error == 5 {
                         // ERROR_ACCESS_DENIED
@@ -264,9 +388,8 @@ fn replace_binary_with_retry(temp_path: &Path, target_path: &Path) -> Result<()>
                 log::error!("Failed to replace binary (attempt {}/5): {}", attempt + 1, e);
                 
                 if attempt < 4 {
-                    tokio::spawn(async {
-                        sleep(Duration::from_millis(1000)).await;
-                    });
+                    // Properly await the sleep
+                    sleep(Duration::from_millis(1000)).await;
                     continue;
                 } else {
                     return Err(anyhow::anyhow!("Failed to replace antumbra binary after 5 attempts: {}. Is antumbra.exe currently running?", e));

@@ -2603,6 +2603,7 @@ dependencies = [
  "env_logger",
  "fern",
  "flate2",
+ "futures-util",
  "hex",
  "libc",
  "log",
