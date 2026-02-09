@@ -80,6 +80,7 @@ pub enum AppError {
     },
 }
 
+#[allow(dead_code)]
 impl AppError {
     /// Create a new IO error
     pub fn io(message: impl Into<String>) -> Self {
@@ -270,20 +271,6 @@ impl From<anyhow::Error> for AppError {
             message: err_str,
             category: ErrorCategory::Unknown,
         }
-    }
-}
-
-/// Helper trait for converting results to AppError
-pub trait IntoAppError<T> {
-    fn into_app_error(self, operation: &str) -> Result<T, AppError>;
-}
-
-impl<T, E: std::fmt::Display> IntoAppError<T> for Result<T, E> {
-    fn into_app_error(self, operation: &str) -> Result<T, AppError> {
-        self.map_err(|e| AppError::Other {
-            message: format!("{} failed: {}", operation, e),
-            category: ErrorCategory::Unknown,
-        })
     }
 }
 

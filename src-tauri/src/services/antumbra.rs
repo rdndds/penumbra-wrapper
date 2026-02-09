@@ -456,7 +456,7 @@ pub fn get_last_command_info() -> Option<AntumbraCommandInfo> {
 }
 
 /// Sync detected antumbra version to configuration if config version is null
-pub fn sync_detected_version_to_config(app: &AppHandle, detected_version: &str) -> Result<()> {
+pub fn sync_detected_version_to_config(_app: &AppHandle, detected_version: &str) -> Result<()> {
     use crate::services::config::{load_settings, save_settings};
     
     // Load current settings
