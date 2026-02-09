@@ -187,7 +187,7 @@ pub async fn download_and_install_with_progress(app: &AppHandle) -> Result<Antum
     // Fetch release info
     emit_progress(app, "fetching", 0, 0, 1, 3, "Fetching release information...");
     let release = fetch_latest_release().await?;
-    let (asset_name, asset_url, checksum) = find_asset_and_checksum(&release).await?;
+    let (_asset_name, asset_url, checksum) = find_asset_and_checksum(&release).await?;
     
     let target_path = get_antumbra_updatable_path(app)?;
     if let Some(parent) = target_path.parent() {

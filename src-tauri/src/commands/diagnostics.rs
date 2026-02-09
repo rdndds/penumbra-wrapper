@@ -198,11 +198,6 @@ fn check_running_antumbra() -> Vec<String> {
     }
 }
 
-#[cfg(not(windows))]
-fn check_running_antumbra() -> Vec<String> {
-    Vec::new()
-}
-
 fn check_github_connectivity() -> bool {
     use std::thread;
     use std::time::Duration;
