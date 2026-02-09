@@ -626,8 +626,13 @@ async fn find_asset_and_checksum(release: &ReleaseInfo) -> Result<(String, Strin
     let checksum_text = download_bytes(&checksum_asset.browser_download_url).await?;
     let checksum_str =
         String::from_utf8(checksum_text).context("checksums.txt was not valid UTF-8")?;
+    
+    log::debug!("Checksums.txt content:\n{}", checksum_str);
+    
     let checksum = parse_checksum(&checksum_str, &asset_name)
         .context("Checksum for release asset not found")?;
+    
+    log::info!("Found checksum for {}: {}", asset_name, checksum);
 
     Ok((asset.name, asset.browser_download_url, checksum))
 }
@@ -672,31 +677,83 @@ fn compute_file_checksum(path: &Path) -> Result<String> {
 }
 
 fn parse_checksum(contents: &str, asset_name: &str) -> Option<String> {
-    for line in contents.lines() {
+    log::debug!("Parsing checksums.txt for asset: {}", asset_name);
+    
+    for (line_num, line) in contents.lines().enumerate() {
         let trimmed = line.trim();
-        if trimmed.is_empty() {
+        
+        // Phase 1: Skip empty lines and comments (lines starting with #)
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            log::trace!("Line {}: Skipping empty/comment line", line_num + 1);
             continue;
         }
-
-        if trimmed.contains('=') && trimmed.contains('(') && trimmed.contains(')') {
-            let name_start = trimmed.find('(')? + 1;
-            let name_end = trimmed.find(')')?;
-            let name = trimmed.get(name_start..name_end)?;
-            let hash = trimmed.split('=').last()?.trim();
-            if name == asset_name {
-                return Some(hash.to_string());
-            }
+        
+        log::trace!("Line {}: Checking: {}", line_num + 1, trimmed);
+        
+        // Try to extract hash and filename
+        let (hash, name) = if let Some(result) = try_parse_bsd_format(trimmed) {
+            // Phase 3: BSD-style format: SHA256(filename)= hash
+            log::trace!("Line {}: Parsed as BSD format", line_num + 1);
+            result
+        } else if let Some(result) = try_parse_standard_format(trimmed) {
+            // Standard format: HASH  FILENAME
+            log::trace!("Line {}: Parsed as standard format", line_num + 1);
+            result
         } else {
-            let mut parts = trimmed.split_whitespace();
-            let hash = parts.next()?;
-            let name = parts.next()?;
-            if name == asset_name {
-                return Some(hash.to_string());
-            }
+            log::trace!("Line {}: Could not parse line format", line_num + 1);
+            continue;
+        };
+        
+        // Phase 4: Validate checksum format (must be 64 hex characters for SHA256)
+        if !is_valid_sha256(&hash) {
+            log::warn!("Line {}: Invalid SHA256 hash format: {}", line_num + 1, hash);
+            continue;
+        }
+        
+        if name == asset_name {
+            log::debug!("Found matching checksum for {}: {}", asset_name, hash);
+            return Some(hash);
         }
     }
-
+    
+    log::warn!("No checksum found for asset: {}", asset_name);
     None
+}
+
+/// Parse standard format: "HASH  FILENAME"
+fn try_parse_standard_format(line: &str) -> Option<(String, String)> {
+    let mut parts = line.split_whitespace();
+    let hash = parts.next()?.to_string();
+    let name = parts.next()?.to_string();
+    
+    // Ensure no more parts (hash should not contain spaces)
+    if parts.next().is_some() {
+        return None;
+    }
+    
+    Some((hash, name))
+}
+
+/// Parse BSD-style format: "SHA256(filename)= hash"
+fn try_parse_bsd_format(line: &str) -> Option<(String, String)> {
+    // Format: ALGORITHM(filename)= hash
+    if !line.contains('=') || !line.contains('(') || !line.contains(')') {
+        return None;
+    }
+    
+    let name_start = line.find('(')? + 1;
+    let name_end = line.find(')')?;
+    let name = line.get(name_start..name_end)?.to_string();
+    
+    // Extract hash after '='
+    let hash = line.split('=').last()?.trim().to_string();
+    
+    Some((hash, name))
+}
+
+/// Phase 4: Validate SHA256 hash format (64 hex characters)
+fn is_valid_sha256(hash: &str) -> bool {
+    hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 pub async fn get_installed_version(app: &AppHandle) -> Result<String> {
