@@ -54,9 +54,9 @@ jobs:
             -d "{
               \"tag_name\": \"$VERSION\",
               \"name\": \"PenumbraWrapper $VERSION\",
-              \"body\": \"## PenumbraWrapper $VERSION\\n\\n### Installation\\n\\n**Windows:**\\n- Download .msi for standard installation\\n- Download .exe for portable installation\\n\\n**Linux:**\\n- Fedora/openSUSE: Download .rpm\\n- Debian/Ubuntu: Download .deb\\n- Other distros: Download .AppImage (portable, no installation needed)\\n\\n### Notes\\n- This is a pre-release version\\n- Linux AppImage requires webkit2gtk-4.1 to be installed on your system\",
+              \"body\": \"## PenumbraWrapper $VERSION\\n\\n### Installation\\n\\n**Windows:**\\n- Download .msi for standard installation\\n- Download .exe for portable installation\\n\\n**Linux:**\\n- Fedora/openSUSE: Download .rpm\\n- Debian/Ubuntu: Download .deb\\n- Other distros: Download .AppImage (portable, no installation needed)\\n\\n### Notes\\n- Linux AppImage requires webkit2gtk-4.1 to be installed on your system\",
               \"draft\": false,
-              \"prerelease\": true,
+              \"prerelease\": false,
               \"generate_release_notes\": false
             }")
           RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id')
@@ -131,10 +131,9 @@ jobs:
             - **Other distros:** Download `.AppImage` (portable, no installation needed)
             
             ### Notes
-            - This is a pre-release version
             - Linux AppImage requires `webkit2gtk-4.1` to be installed on your system
           releaseDraft: false
-          prerelease: true
+          prerelease: false
 
   cleanup:
     needs: build
