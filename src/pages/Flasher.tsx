@@ -63,9 +63,9 @@ export function Flasher() {
         const downloadableCount = parsed.partitions.filter((p) => p.is_download).length;
         toast.success(`Loaded ${downloadableCount} downloadable partitions from ${parsed.platform}`);
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
+        // ErrorHandler now extracts message from structured errors automatically
         ErrorHandler.handle(error, 'Parse scatter file', {
-          customMessage: `Failed to parse scatter file: ${message}`,
+          customMessage: 'Failed to parse scatter file',
         });
         setScatterFile(null);
       } finally {

@@ -107,12 +107,12 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
         isSettingsLoaded: true,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load settings';
-      set({ settingsError: message, isSettingsLoaded: false });
-      ErrorHandler.handle(error, 'Load settings', {
+      // ErrorHandler now extracts the message automatically
+      const parsedError = ErrorHandler.handle(error, 'Load settings', {
         showToast: false,
         addToOperationLog: false,
       });
+      set({ settingsError: parsedError.message, isSettingsLoaded: false });
     } finally {
       set({ isSettingsLoading: false });
     }

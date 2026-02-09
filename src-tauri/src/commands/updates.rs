@@ -12,16 +12,16 @@ use tauri::AppHandle;
 
 #[tauri::command]
 pub async fn get_antumbra_updatable_path(app: AppHandle) -> Result<String, AppError> {
-    let path = resolve_antumbra_updatable_path(&app).map_err(|e| AppError::Other(e.to_string()))?;
+    let path = resolve_antumbra_updatable_path(&app)?;
     Ok(path.display().to_string())
 }
 
 #[tauri::command]
 pub async fn check_antumbra_update(app: AppHandle) -> Result<AntumbraUpdateInfo, AppError> {
-    check_for_updates(&app).await.map_err(|e| AppError::Other(e.to_string()))
+    check_for_updates(&app).await.map_err(|e| e.into())
 }
 
 #[tauri::command]
 pub async fn download_antumbra_update(app: AppHandle) -> Result<AntumbraUpdateResult, AppError> {
-    download_and_install(&app).await.map_err(|e| AppError::Other(e.to_string()))
+    download_and_install(&app).await.map_err(|e| e.into())
 }

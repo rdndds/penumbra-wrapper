@@ -72,12 +72,12 @@ export async function executeOperation(
     setIsStreaming(false);
     return { operationId, success: true };
   } catch (error: unknown) {
-    ErrorHandler.handle(error, operation, {
+    const parsedError = ErrorHandler.handle(error, operation, {
       ...errorOptions,
       customMessage: errorMessage ?? errorOptions?.customMessage,
     });
-    const errorDetail = error instanceof Error ? error.message : undefined;
-    finishOperation(false, errorMessage || errorDetail);
+    // Use the parsed error message from the structured error
+    finishOperation(false, errorMessage || parsedError.message);
     return { operationId, success: false };
   }
 }

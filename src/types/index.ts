@@ -97,3 +97,6 @@ export interface ScatterFile {
   partitions: ScatterPartition[];
   file_path: string;
 }
+
+// Re-export error types
+export * from './errors';

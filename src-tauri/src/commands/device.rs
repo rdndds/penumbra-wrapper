@@ -35,7 +35,7 @@ pub async fn reboot_device(
     executor
         .execute_streaming(app, operation_id, args)
         .await
-        .map_err(|e| AppError::Command(e.to_string()))?;
+        .map_err(|e| AppError::command(e.to_string()))?;
 
     Ok(())
 }
@@ -64,7 +64,7 @@ pub async fn shutdown_device(
     executor
         .execute_streaming(app, operation_id, args)
         .await
-        .map_err(|e| AppError::Command(e.to_string()))?;
+        .map_err(|e| AppError::command(e.to_string()))?;
 
     Ok(())
 }
@@ -94,7 +94,7 @@ pub async fn list_partitions(
     let output = executor
         .execute_streaming(app, operation_id.clone(), args)
         .await
-        .map_err(|e| AppError::Command(e.to_string()))?;
+        .map_err(|e| AppError::command(e.to_string()))?;
 
     // Parse the output into partitions
     let partitions = parse_pgpt_output(&output)?;

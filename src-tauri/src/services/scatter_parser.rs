@@ -16,7 +16,7 @@ impl ScatterParser {
     /// Parse scatter file - auto-detects format (XML or TXT/YAML)
     pub fn parse(file_path: &str) -> Result<ScatterFile, AppError> {
         let content = fs::read_to_string(file_path)
-            .map_err(|e| AppError::Io(format!("Failed to read scatter file: {}", e)))?;
+            .map_err(|e| AppError::io(format!("Failed to read scatter file: {}", e)))?;
 
         // Auto-detect format
         let trimmed = content.trim();

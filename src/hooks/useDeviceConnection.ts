@@ -66,9 +66,9 @@ export function useDeviceConnection() {
       );
       return true;
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Connection failed';
-      setError(message);
-      ErrorHandler.handle(err, 'Connection');
+      // ErrorHandler now returns the parsed error with message
+      const parsedError = ErrorHandler.handle(err, 'Connection');
+      setError(parsedError.message);
       setConnected(false);
       return false;
     } finally {

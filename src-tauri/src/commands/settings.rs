@@ -9,10 +9,10 @@ use tauri::AppHandle;
 
 #[tauri::command]
 pub async fn get_settings(_app: AppHandle) -> Result<AppSettings, AppError> {
-    load_settings().map_err(|e| AppError::Other(e.to_string()))
+    load_settings().map_err(|e| AppError::other(e.to_string()))
 }
 
 #[tauri::command]
 pub async fn update_settings(_app: AppHandle, settings: AppSettings) -> Result<(), AppError> {
-    save_settings(&settings).map_err(|e| AppError::Other(e.to_string()))
+    save_settings(&settings).map_err(|e| AppError::other(e.to_string()))
 }

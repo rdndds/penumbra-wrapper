@@ -69,8 +69,8 @@ function AppContent() {
           }
         }
       } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        const customMessage = WindowsErrorHandler.getErrorSuggestion(errorMessage);
+        // WindowsErrorHandler now handles structured errors from backend
+        const customMessage = WindowsErrorHandler.getErrorSuggestion(error);
         
         ErrorHandler.handle(error, 'Check antumbra updates', {
           showToast: false,

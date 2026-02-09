@@ -31,7 +31,7 @@ pub async fn read_wrapper_log() -> Result<String, AppError> {
 
 #[tauri::command]
 pub async fn read_antumbra_log(app: AppHandle) -> Result<String, AppError> {
-    let config_dir = app.path().app_config_dir().map_err(|e| AppError::Other(e.to_string()))?;
+    let config_dir = app.path().app_config_dir().map_err(|e| AppError::other(e.to_string()))?;
     let log_path = config_dir.join("antumbra.log");
     let contents = std::fs::read_to_string(&log_path).unwrap_or_default();
     Ok(contents)

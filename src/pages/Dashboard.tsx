@@ -172,8 +172,8 @@ export function Dashboard() {
       const info = await AntumbraApi.checkUpdate();
       setUpdateInfo(info);
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const customMessage = WindowsErrorHandler.getErrorSuggestion(errorMessage);
+      // Use WindowsErrorHandler with the raw error - it now handles structured errors
+      const customMessage = WindowsErrorHandler.getErrorSuggestion(error);
       
       ErrorHandler.handle(error, 'Download antumbra update', { 
         addToOperationLog: false,
@@ -181,8 +181,8 @@ export function Dashboard() {
       });
       
       // If it's a Windows-specific error, show troubleshooting help
-      if (WindowsErrorHandler.isWindowsError(errorMessage)) {
-        const steps = WindowsErrorHandler.getTroubleshootingSteps(errorMessage);
+      if (WindowsErrorHandler.isWindowsError(error)) {
+        const steps = WindowsErrorHandler.getTroubleshootingSteps(error);
         if (steps.length > 0) {
           // Add troubleshooting steps to operation log for reference
           steps.forEach((step, index) => {

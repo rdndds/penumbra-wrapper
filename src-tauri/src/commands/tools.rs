@@ -50,7 +50,7 @@ pub async fn read_all_partitions(
     executor
         .execute_streaming(app, operation_id, args)
         .await
-        .map_err(|e| AppError::Command(e.to_string()))?;
+        .map_err(|e| AppError::command(e.to_string()))?;
 
     Ok(())
 }
@@ -82,7 +82,7 @@ pub async fn seccfg_operation(
     executor
         .execute_streaming(app, operation_id, args)
         .await
-        .map_err(|e| AppError::Command(e.to_string()))?;
+        .map_err(|e| AppError::command(e.to_string()))?;
 
     Ok(())
 }

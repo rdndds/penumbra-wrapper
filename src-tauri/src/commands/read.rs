@@ -42,7 +42,7 @@ pub async fn read_partition(
     executor
         .execute_streaming(app, operation_id, args)
         .await
-        .map_err(|e| AppError::Command(e.to_string()))?;
+        .map_err(|e| AppError::command(e.to_string()))?;
 
     Ok(())
 }

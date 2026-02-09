@@ -23,8 +23,10 @@ export function WindowsDiagnosticsPanel() {
       const result = await invoke<WindowsDiagnostics>('check_windows_environment');
       setDiagnostics(result);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      setError(errorMessage);
+      // Use the error parser to extract message from any error format
+      const { parseTauriError } = await import('../services/utils/errorParser');
+      const parsedError = parseTauriError(err);
+      setError(parsedError.message);
     } finally {
       setIsLoading(false);
     }
