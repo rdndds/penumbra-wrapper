@@ -241,7 +241,6 @@ fn replace_binary_with_retry(temp_path: &Path, target_path: &Path) -> Result<()>
             }
             Err(e) => {
                 // Check if it's a file sharing violation (ERROR_SHARING_VIOLATION = 32)
-                #[cfg(windows)]
                 if let Some(raw_error) = e.raw_os_error() {
                     if raw_error == 32 && attempt < 4 {
                         log::warn!("File locked (attempt {}/5), retrying in 2 seconds...", attempt + 1);

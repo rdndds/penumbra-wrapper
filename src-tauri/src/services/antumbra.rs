@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -209,7 +209,6 @@ impl AntumbraExecutor {
         let mut child = {
         #[cfg(windows)]
         {
-            use std::os::windows::process::CommandExt;
             let mut cmd = TokioCommand::new(&self.binary_path);
             cmd.args(&args)
                 .current_dir(&self.working_dir)
@@ -403,24 +402,25 @@ pub fn kill_current_process() -> Result<()> {
 
 #[cfg(windows)]
 fn kill_windows_process(pid: u32) -> Result<()> {
-    use winapi::um::handleapi::OpenProcess;
-    use winapi::um::processthreadsapi::TerminateProcess;
+    use winapi::um::processthreadsapi::{OpenProcess, TerminateProcess};
+    use winapi::um::handleapi::CloseHandle;
     use winapi::um::winnt::{PROCESS_TERMINATE, HANDLE};
     use winapi::um::errhandlingapi::GetLastError;
-    
+
     unsafe {
         let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
         if handle.is_null() {
             let error = GetLastError();
             return Err(anyhow::anyhow!("Failed to open process {}: Error code {}", pid, error));
         }
-        
+
         let result = TerminateProcess(handle as HANDLE, 1);
         if result == 0 {
             let error = GetLastError();
             return Err(anyhow::anyhow!("Failed to terminate process {}: Error code {}", pid, error));
         }
-        
+
+        CloseHandle(handle);
         log::info!("Successfully terminated antumbra process {}", pid);
         Ok(())
     }

@@ -7,7 +7,7 @@ use crate::error::AppError;
 use crate::services::antumbra::{self, AntumbraCommandInfo, get_last_command_info, AntumbraExecutor};
 use crate::services::config;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+
 use tauri::{AppHandle, Manager};
 
 #[tauri::command]
