@@ -10,13 +10,15 @@ use log::warn;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::Write as StdWrite;
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::AppHandle;
+use tauri::Emitter;
 use tokio::fs::File;
 use tokio::io::{AsyncWriteExt, BufWriter};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AntumbraUpdateInfo {
     pub installed_version: Option<String>,
     pub installed_path: Option<String>,
@@ -33,6 +35,23 @@ pub struct AntumbraUpdateInfo {
 pub struct AntumbraUpdateResult {
     pub version: String,
     pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DownloadProgress {
+    pub bytes_downloaded: u64,
+    pub total_bytes: u64,
+    pub percentage: f32,
+    pub status: String,
+    pub attempt: u32,
+    pub max_attempts: u32,
+    pub message: String,
+}
+
+impl DownloadProgress {
+    pub fn emit(&self, app: &AppHandle) {
+        let _ = app.emit("antumbra-download-progress", self);
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -161,19 +180,26 @@ pub async fn check_for_updates(app: &AppHandle) -> Result<AntumbraUpdateInfo> {
 }
 
 pub async fn download_and_install(app: &AppHandle) -> Result<AntumbraUpdateResult> {
-    let release = fetch_latest_release().await?;
-    let (_asset_name, asset_url, checksum) = find_asset_and_checksum(&release).await?;
+    download_and_install_with_progress(app).await
+}
 
+pub async fn download_and_install_with_progress(app: &AppHandle) -> Result<AntumbraUpdateResult> {
+    // Fetch release info
+    emit_progress(app, "fetching", 0, 0, 1, 3, "Fetching release information...");
+    let release = fetch_latest_release().await?;
+    let (asset_name, asset_url, checksum) = find_asset_and_checksum(&release).await?;
+    
     let target_path = get_antumbra_updatable_path(app)?;
     if let Some(parent) = target_path.parent() {
         fs::create_dir_all(parent).context("Failed to create antumbra bin directory")?;
     }
 
-    // Download directly to temp file with retry logic
+    // Download directly to temp file with retry logic and progress
     let temp_path = target_path.with_extension("download");
-    download_file_with_retry(&asset_url, &temp_path, &checksum).await?;
+    download_file_with_retry_and_progress(app, &asset_url, &temp_path, &checksum).await?;
 
     // Replace the old binary with the new one
+    emit_progress(app, "replacing", 0, 0, 1, 3, "Replacing binary...");
     safe_replace_binary(&target_path, &temp_path).await?;
 
     #[cfg(unix)]
@@ -192,147 +218,313 @@ pub async fn download_and_install(app: &AppHandle) -> Result<AntumbraUpdateResul
         }
     }
 
+    emit_progress(app, "completed", 0, 0, 1, 3, "Update completed successfully!");
     Ok(AntumbraUpdateResult { version: release.tag_name, path: target_path.display().to_string() })
 }
 
-/// Download a file with retry logic and streaming to disk
-/// Verifies checksum after successful download
-async fn download_file_with_retry(url: &str, temp_path: &Path, expected_checksum: &str) -> Result<()> {
-    use futures_util::StreamExt;
+fn emit_progress(app: &AppHandle, status: &str, bytes: u64, total: u64, attempt: u32, max: u32, message: &str) {
+    let percentage = if total > 0 {
+        (bytes as f32 / total as f32) * 100.0
+    } else {
+        0.0
+    };
     
+    DownloadProgress {
+        bytes_downloaded: bytes,
+        total_bytes: total,
+        percentage,
+        status: status.to_string(),
+        attempt,
+        max_attempts: max,
+        message: message.to_string(),
+    }.emit(app);
+}
+
+async fn download_file_with_retry_and_progress(
+    app: &AppHandle,
+    url: &str,
+    temp_path: &Path,
+    expected_checksum: &str,
+) -> Result<()> {
     const MAX_RETRIES: u32 = 3;
-    const INITIAL_DELAY_MS: u64 = 1000;
     
-    // Clean up any existing temp file
-    if temp_path.exists() {
-        if let Err(e) = fs::remove_file(temp_path) {
-            log::warn!("Failed to remove existing temp file {:?}: {}", temp_path, e);
-        }
-    }
-    
-    // Create reqwest client with timeout
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(300)) // 5 minute timeout for large files
-        .connect_timeout(Duration::from_secs(30))
-        .build()
-        .context("Failed to create HTTP client")?;
-    
-    for attempt in 0..MAX_RETRIES {
-        log::info!("Downloading update from {} (attempt {}/{})...", url, attempt + 1, MAX_RETRIES);
+    for attempt in 1..=MAX_RETRIES {
+        emit_progress(app, "downloading", 0, 0, attempt, MAX_RETRIES, 
+            &format!("Download attempt {}/{}...", attempt, MAX_RETRIES));
         
-        match try_download_file(&client, url, temp_path).await {
-            Ok(()) => {
-                // Verify checksum
-                log::info!("Verifying download checksum...");
-                let downloaded_checksum = compute_file_checksum(temp_path)?;
+        // Clean temp file before attempt
+        if temp_path.exists() {
+            let _ = fs::remove_file(temp_path);
+        }
+        
+        // Try async streaming first (primary method)
+        log::info!("Download attempt {}/{}: Trying async streaming method...", attempt, MAX_RETRIES);
+        match try_download_async_streaming(app, url, temp_path).await {
+            Ok(total_bytes) => {
+                emit_progress(app, "verifying", total_bytes, total_bytes, attempt, MAX_RETRIES, 
+                    "Verifying download checksum...");
                 
-                if downloaded_checksum.to_lowercase() == expected_checksum.trim().to_lowercase() {
-                    log::info!("Download successful and checksum verified");
+                if verify_file_checksum(temp_path, expected_checksum)? {
+                    emit_progress(app, "completed", total_bytes, total_bytes, attempt, MAX_RETRIES, 
+                        "Download successful and verified!");
                     return Ok(());
                 } else {
-                    fs::remove_file(temp_path)
-                        .unwrap_or_else(|e| log::warn!("Failed to remove corrupted temp file: {}", e));
+                    log::warn!("Checksum mismatch on attempt {}", attempt);
+                    cleanup_temp_file(temp_path);
                     
-                if attempt < MAX_RETRIES - 1 {
-                    let delay = INITIAL_DELAY_MS * (attempt as u64 + 1);
-                    log::warn!(
-                        "Checksum mismatch on attempt {}/{}. Retrying in {}ms...",
-                        attempt + 1,
-                        MAX_RETRIES,
-                        delay
-                    );
-                    tokio::time::sleep(Duration::from_millis(delay)).await;
-                    continue;
-                    } else {
-                        anyhow::bail!("Download failed: Checksum mismatch after {} attempts. The file may be corrupted.", MAX_RETRIES);
+                    if attempt < MAX_RETRIES {
+                        let delay = attempt as u64 * 1000;
+                        emit_progress(app, "retrying", 0, 0, attempt, MAX_RETRIES, 
+                            &format!("Checksum mismatch. Retrying in {}s...", delay / 1000));
+                        tokio::time::sleep(Duration::from_millis(delay)).await;
+                        continue;
                     }
                 }
             }
             Err(e) => {
-                fs::remove_file(temp_path)
-                    .unwrap_or_else(|e| log::warn!("Failed to remove incomplete temp file: {}", e));
+                log::error!("Async download failed: {}", e);
+                cleanup_temp_file(temp_path);
                 
-                if attempt < MAX_RETRIES - 1 {
-                    let delay = INITIAL_DELAY_MS * (attempt as u64 + 1);
-                    log::warn!(
-                        "Download failed on attempt {}/{}: {}. Retrying in {}ms...",
-                        attempt + 1,
-                        MAX_RETRIES,
-                        e,
-                        delay
-                    );
+                // Fallback 1: Try blocking reqwest
+                if attempt == MAX_RETRIES {
+                    log::info!("Attempting blocking download fallback...");
+                    emit_progress(app, "fallback_blocking", 0, 0, attempt, MAX_RETRIES, 
+                        "Trying alternative download method...");
+                    
+                    match try_download_blocking(url, temp_path) {
+                        Ok(()) => {
+                            if verify_file_checksum(temp_path, expected_checksum)? {
+                                emit_progress(app, "completed", 0, 0, attempt, MAX_RETRIES, 
+                                    "Download successful!");
+                                return Ok(());
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Blocking download failed: {}", e);
+                            cleanup_temp_file(temp_path);
+                            
+                            // Fallback 2: Try system commands
+                            #[cfg(unix)]
+                            {
+                                log::info!("Attempting curl fallback...");
+                                emit_progress(app, "fallback_curl", 0, 0, attempt, MAX_RETRIES, 
+                                    "Trying system download...");
+                                
+                                if try_download_curl(url, temp_path).is_ok() 
+                                    && verify_file_checksum(temp_path, expected_checksum)? 
+                                {
+                                    emit_progress(app, "completed", 0, 0, attempt, MAX_RETRIES, 
+                                        "Download successful!");
+                                    return Ok(());
+                                }
+                            }
+                            
+                            #[cfg(windows)]
+                            {
+                                log::info!("Attempting PowerShell fallback...");
+                                emit_progress(app, "fallback_powershell", 0, 0, attempt, MAX_RETRIES, 
+                                    "Trying system download...");
+                                
+                                if try_download_powershell(url, temp_path).is_ok()
+                                    && verify_file_checksum(temp_path, expected_checksum)?
+                                {
+                                    emit_progress(app, "completed", 0, 0, attempt, MAX_RETRIES, 
+                                        "Download successful!");
+                                    return Ok(());
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if attempt < MAX_RETRIES {
+                    let delay = attempt as u64 * 2000; // 2s, 4s
+                    emit_progress(app, "retrying", 0, 0, attempt, MAX_RETRIES, 
+                        &format!("Download failed. Retrying in {}s...", delay / 1000));
                     tokio::time::sleep(Duration::from_millis(delay)).await;
-                } else {
-                    return Err(e.context(format!("Failed to download after {} attempts", MAX_RETRIES)));
                 }
             }
         }
     }
     
-    unreachable!()
+    Err(anyhow::anyhow!("Failed to download after {} attempts and all fallbacks", MAX_RETRIES))
 }
 
-/// Try to download a file once, streaming to disk
-async fn try_download_file(client: &reqwest::Client, url: &str, temp_path: &Path) -> Result<()> {
+async fn try_download_async_streaming(app: &AppHandle, url: &str, temp_path: &Path) -> Result<u64> {
     use futures_util::StreamExt;
+    
+    // Client with proper configuration for streaming
+    let client = reqwest::Client::builder()
+        .read_timeout(Duration::from_secs(30))        // Per-read timeout (CRITICAL!)
+        .connect_timeout(Duration::from_secs(10))     // Connection timeout
+        .redirect(reqwest::redirect::Policy::limited(10)) // Follow redirects
+        .build()
+        .context("Failed to create HTTP client")?;
+    
+    log::info!("Starting async download from: {}", url);
     
     let response = client
         .get(url)
-        .header("User-Agent", "penumbra-wrapper")
+        .header("User-Agent", "penumbra-wrapper/1.0")
+        .header("Accept", "application/octet-stream")   // Required for GitHub
         .send()
         .await
-        .context("Failed to start download")?;
+        .context("Failed to send download request")?;
     
-    let response = response
-        .error_for_status()
-        .context("Server returned error status")?;
-    
-    // Get content length for logging
-    if let Some(content_length) = response.content_length() {
-        log::info!("Download size: {} bytes ({:.2} MB)", 
-            content_length, 
-            content_length as f64 / 1_048_576.0
-        );
+    let status = response.status();
+    if !status.is_success() {
+        return Err(anyhow::anyhow!("HTTP error {}: {}", status, status.canonical_reason().unwrap_or("Unknown")));
     }
     
-    // Create temp file
+    let total_bytes = response.content_length().unwrap_or(0);
+    log::info!("Content-Length: {} bytes ({:.2} MB)", total_bytes, total_bytes as f64 / 1_048_576.0);
+    
+    // Create file with 64KB buffer (optimal for 1-2MB files on Windows)
     let file = File::create(temp_path)
         .await
-        .context("Failed to create temporary file for download")?;
+        .context("Failed to create temp file")?;
+    let mut writer = BufWriter::with_capacity(64 * 1024, file);
     
-    let mut writer = BufWriter::new(file);
     let mut stream = response.bytes_stream();
-    let mut downloaded_bytes: u64 = 0;
-    let mut last_logged_mb: u64 = 0;
+    let mut downloaded: u64 = 0;
+    let mut last_progress_emit = Instant::now();
     
-    // Stream chunks to file
-    while let Some(chunk_result) = stream.next().await {
-        let chunk = chunk_result.context("Error while downloading")?;
-        writer
-            .write_all(&chunk)
-            .await
-            .context("Failed to write to temporary file")?;
-        
-        downloaded_bytes += chunk.len() as u64;
-        
-        // Log progress every 1 MB
-        let current_mb = downloaded_bytes / 1_048_576;
-        if current_mb > last_logged_mb {
-            log::info!("Downloaded {} MB...", current_mb);
-            last_logged_mb = current_mb;
+    loop {
+        // CRITICAL: Per-chunk timeout to detect hangs
+        match tokio::time::timeout(Duration::from_secs(30), stream.next()).await {
+            Ok(Some(Ok(chunk))) => {
+                writer.write_all(&chunk).await.context("Failed to write chunk")?;
+                downloaded += chunk.len() as u64;
+                
+                // Emit progress every 100ms or every 256KB
+                let now = Instant::now();
+                if now.duration_since(last_progress_emit).as_millis() > 100 
+                    || downloaded % 262_144 == 0 
+                {
+                    let percentage = if total_bytes > 0 {
+                        (downloaded as f32 / total_bytes as f32) * 100.0
+                    } else {
+                        0.0
+                    };
+                    
+                    emit_progress(app, "downloading", downloaded, total_bytes, 1, 3, 
+                        &format!("Downloading... {:.1}%", percentage));
+                    last_progress_emit = now;
+                }
+            }
+            Ok(Some(Err(e))) => {
+                return Err(anyhow::anyhow!("Stream error: {}", e));
+            }
+            Ok(None) => {
+                log::info!("Download stream completed");
+                break;
+            }
+            Err(_) => {
+                return Err(anyhow::anyhow!("Download stalled - no data received for 30 seconds"));
+            }
         }
     }
     
-    // Flush and close file
-    writer
-        .flush()
-        .await
-        .context("Failed to flush temporary file")?;
-    
+    // Final flush to ensure all data is written
+    writer.flush().await.context("Failed to flush file")?;
     drop(writer);
     
-    log::info!("Download complete: {} bytes total", downloaded_bytes);
+    log::info!("Downloaded {} bytes successfully", downloaded);
+    Ok(downloaded)
+}
+
+fn try_download_blocking(url: &str, temp_path: &Path) -> Result<()> {
+    log::info!("Using blocking reqwest for download");
+    
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(60))  // Total timeout for small files
+        .connect_timeout(Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .build()?;
+    
+    let mut response = client
+        .get(url)
+        .header("User-Agent", "penumbra-wrapper/1.0")
+        .header("Accept", "application/octet-stream")
+        .send()?;
+    
+    if !response.status().is_success() {
+        return Err(anyhow::anyhow!("HTTP error: {}", response.status()));
+    }
+    
+    // Use BufWriter for efficient I/O
+    let file = std::fs::File::create(temp_path)?;
+    let mut writer = std::io::BufWriter::with_capacity(64 * 1024, file);
+    
+    std::io::copy(&mut response, &mut writer)?;
+    writer.flush()?;
+    
+    log::info!("Blocking download completed");
     Ok(())
+}
+
+#[cfg(windows)]
+fn try_download_powershell(url: &str, temp_path: &Path) -> Result<()> {
+    log::info!("Using PowerShell for download");
+    
+    let output = std::process::Command::new("powershell")
+        .args(&[
+            "-NoProfile",
+            "-ExecutionPolicy", "Bypass",
+            "-Command",
+            &format!(
+                "Invoke-WebRequest -Uri '{}' -OutFile '{}' -UseBasicParsing",
+                url,
+                temp_path.display()
+            ),
+        ])
+        .output()?;
+    
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("PowerShell download failed: {}", String::from_utf8_lossy(&output.stderr)))
+    }
+}
+
+#[cfg(unix)]
+fn try_download_curl(url: &str, temp_path: &Path) -> Result<()> {
+    log::info!("Using curl for download");
+    
+    let output = std::process::Command::new("curl")
+        .args(&[
+            "-L",  // Follow redirects
+            "-o", temp_path.to_str().unwrap(),
+            "--max-time", "60",
+            "--retry", "2",
+            url,
+        ])
+        .output()?;
+    
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("curl download failed: {}", String::from_utf8_lossy(&output.stderr)))
+    }
+}
+
+fn cleanup_temp_file(temp_path: &Path) {
+    if temp_path.exists() {
+        if let Err(e) = fs::remove_file(temp_path) {
+            log::warn!("Failed to remove temp file {:?}: {}", temp_path, e);
+        }
+    }
+}
+
+fn verify_file_checksum(path: &Path, expected: &str) -> Result<bool> {
+    let actual = compute_file_checksum(path)?;
+    let matches = actual.to_lowercase() == expected.trim().to_lowercase();
+    
+    if !matches {
+        log::error!("Checksum mismatch: expected {}, got {}", expected, actual);
+    }
+    
+    Ok(matches)
 }
 
 /// Safely replace binary with Windows-specific handling for file locks and atomic operations
@@ -356,7 +548,6 @@ async fn safe_replace_binary(target_path: &Path, temp_path: &Path) -> Result<()>
 
 #[cfg(windows)]
 async fn replace_binary_with_retry(temp_path: &Path, target_path: &Path) -> Result<()> {
-    use std::time::Duration;
     use tokio::time::sleep;
     
     for attempt in 0..5 {
@@ -470,19 +661,6 @@ async fn download_bytes(url: &str) -> Result<Vec<u8>> {
         .context("Failed to read update response")?;
 
     Ok(bytes.to_vec())
-}
-
-fn verify_checksum(bytes: &[u8], expected: &str) -> Result<()> {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    let digest = hasher.finalize();
-    let actual = hex::encode(digest);
-
-    if actual.to_lowercase() != expected.trim().to_lowercase() {
-        anyhow::bail!("Checksum mismatch (expected {}, got {})", expected, actual)
-    }
-
-    Ok(())
 }
 
 fn compute_file_checksum(path: &Path) -> Result<String> {

@@ -23,6 +23,17 @@ import { WindowsErrorHandler } from '../services/utils/windowsErrorHandler';
 import toast from 'react-hot-toast';
 import type { Partition, AntumbraUpdateInfo } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import { listen } from '@tauri-apps/api/event';
+
+interface DownloadProgress {
+  bytes_downloaded: number;
+  total_bytes: number;
+  percentage: number;
+  status: string;
+  attempt: number;
+  max_attempts: number;
+  message: string;
+}
 
 const CRITICAL_PARTITIONS = ['nvram', 'nvdata', 'nvcfg', 'proinfo', 'protect1', 'protect2'];
 
@@ -66,6 +77,37 @@ export function Dashboard() {
   const [updateInfo, setUpdateInfo] = useState<AntumbraUpdateInfo | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
+
+  // Listen for download progress events
+  useEffect(() => {
+    let unlistenFn: (() => void) | null = null;
+
+    const setupListener = async () => {
+      try {
+        unlistenFn = await listen<DownloadProgress>('antumbra-download-progress', (event) => {
+          setDownloadProgress(event.payload);
+          
+          // Show toast for important status changes
+          if (event.payload.status === 'completed') {
+            toast.success('Download completed successfully!');
+          } else if (event.payload.status === 'failed') {
+            toast.error(`Download failed: ${event.payload.message}`);
+          }
+        });
+      } catch (error) {
+        console.error('Failed to setup download progress listener:', error);
+      }
+    };
+
+    setupListener();
+
+    return () => {
+      if (unlistenFn) {
+        unlistenFn();
+      }
+    };
+  }, []);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -473,6 +515,7 @@ export function Dashboard() {
         onDownload={handleDownloadUpdate}
         updateInfo={updateInfo}
         isDownloading={isDownloadingUpdate}
+        downloadProgress={downloadProgress}
       />
 
     </div>

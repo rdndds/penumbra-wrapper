@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react';
-import { X, Download, AlertCircle } from 'lucide-react';
+import { X, Download, AlertCircle, Loader2 } from 'lucide-react';
 import type { AntumbraUpdateInfo } from '../types';
+
+export interface DownloadProgress {
+  bytes_downloaded: number;
+  total_bytes: number;
+  percentage: number;
+  status: string;
+  attempt: number;
+  max_attempts: number;
+  message: string;
+}
 
 export interface UpdateAvailableModalProps {
   isOpen: boolean;
@@ -8,6 +18,7 @@ export interface UpdateAvailableModalProps {
   onDownload: () => void;
   updateInfo: AntumbraUpdateInfo | null;
   isDownloading?: boolean;
+  downloadProgress?: DownloadProgress | null;
 }
 
 export function UpdateAvailableModal({
@@ -16,6 +27,7 @@ export function UpdateAvailableModal({
   onDownload,
   updateInfo,
   isDownloading = false,
+  downloadProgress = null,
 }: UpdateAvailableModalProps) {
   const [isVisible, setIsVisible] = useState(false);
 
@@ -46,6 +58,42 @@ export function UpdateAvailableModal({
 
   if (!isVisible && !isOpen) return null;
   if (!updateInfo || !updateInfo.update_available) return null;
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case 'downloading':
+      case 'fetching':
+        return 'text-blue-400';
+      case 'verifying':
+        return 'text-yellow-400';
+      case 'completed':
+        return 'text-green-400';
+      case 'failed':
+        return 'text-red-400';
+      case 'retrying':
+      case 'fallback_blocking':
+      case 'fallback_curl':
+      case 'fallback_powershell':
+        return 'text-amber-400';
+      default:
+        return 'text-zinc-400';
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    if (status === 'downloading' || status === 'fetching' || status === 'verifying' || status === 'replacing') {
+      return <Loader2 className="w-4 h-4 animate-spin" />;
+    }
+    return null;
+  };
 
   return (
     <>
@@ -95,6 +143,47 @@ export function UpdateAvailableModal({
                 <span className="text-zinc-400">Install location:</span>
                 <div className="mt-1 font-mono text-xs bg-zinc-800 p-2 rounded overflow-x-auto">
                   {updateInfo.installed_path}
+                </div>
+              </div>
+            )}
+
+            {/* Download Progress */}
+            {isDownloading && downloadProgress && (
+              <div className="space-y-3 p-4 bg-zinc-800/50 rounded-lg border border-zinc-700">
+                {/* Status */}
+                <div className="flex items-center justify-between">
+                  <div className={`flex items-center gap-2 text-sm font-medium ${getStatusColor(downloadProgress.status)}`}>
+                    {getStatusIcon(downloadProgress.status)}
+                    <span>{downloadProgress.message}</span>
+                  </div>
+                  {downloadProgress.attempt > 1 && (
+                    <span className="text-xs text-zinc-500">
+                      Attempt {downloadProgress.attempt}/{downloadProgress.max_attempts}
+                    </span>
+                  )}
+                </div>
+
+                {/* Progress Bar */}
+                <div className="relative">
+                  <div className="h-2 bg-zinc-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 transition-all duration-300 ease-out"
+                      style={{ width: `${downloadProgress.percentage}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Progress Stats */}
+                <div className="flex items-center justify-between text-xs text-zinc-500">
+                  <span>
+                    {downloadProgress.total_bytes > 0 
+                      ? `${formatBytes(downloadProgress.bytes_downloaded)} / ${formatBytes(downloadProgress.total_bytes)}`
+                      : downloadProgress.bytes_downloaded > 0
+                        ? formatBytes(downloadProgress.bytes_downloaded)
+                        : 'Starting...'
+                    }
+                  </span>
+                  <span>{downloadProgress.percentage.toFixed(1)}%</span>
                 </div>
               </div>
             )}
