@@ -55,7 +55,7 @@ jobs:
             -d "{
               \"tag_name\": \"$VERSION\",
               \"name\": \"PenumbraWrapper $VERSION\",
-              \"body\": \"## PenumbraWrapper $VERSION\\n\\n### Installation\\n\\n**Windows:**\\n- Download .msi for installation\\n\\n**Linux:**\\n- Fedora/openSUSE: Download .rpm\\n- Debian/Ubuntu: Download .deb\\n- Other distros: Download .AppImage (portable, no installation needed)\\n\\n### Notes\\n- Linux AppImage requires webkit2gtk-4.1 to be installed on your system\",
+              \"body\": \"## PenumbraWrapper $VERSION\\n\\n### Installation\\n\\n**Windows:**\\n- Download .msi for installation\\n\\n**Linux:**\\n- Fedora/openSUSE: Download .rpm\\n- Debian/Ubuntu: Download .deb\\n- Other distros: Download .AppImage (portable, no installation needed)\",
               \"draft\": false,
               \"prerelease\": false,
               \"generate_release_notes\": false
@@ -129,9 +129,6 @@ jobs:
             - **Fedora/openSUSE:** Download `.rpm`
             - **Debian/Ubuntu:** Download `.deb`
             - **Other distros:** Download `.AppImage` (portable, no installation needed)
-            
-            ### Notes
-            - Linux AppImage requires `webkit2gtk-4.1` to be installed on your system
           releaseDraft: false
           prerelease: false
 
