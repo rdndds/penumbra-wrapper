@@ -3,6 +3,7 @@ name: Release
 on:
   release:
     types: [published]
+  push:
   workflow_dispatch:
 
 permissions:
@@ -72,7 +73,7 @@ jobs:
           - platform: 'ubuntu-22.04'
             args: ''
           - platform: 'windows-latest'
-            args: ''
+            args: '--bundles msi'
 
     runs-on: ${{ matrix.platform }}
     steps:
