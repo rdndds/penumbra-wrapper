@@ -214,7 +214,15 @@ impl ScatterParser {
 
         let target_storage = if has_ufs { "UFS" } else { "EMMC" };
 
-        Self::process_yaml_docs(docs, file_path, target_storage)
+        let has_storage_type_sections = docs.iter().any(|doc| {
+            if let Value::Mapping(map) = doc {
+                map.contains_key("storage_type")
+            } else {
+                false
+            }
+        });
+
+        Self::process_yaml_docs(docs, file_path, target_storage, has_storage_type_sections)
     }
 
     /// Process YAML documents from either format
@@ -222,6 +230,7 @@ impl ScatterParser {
         docs: Vec<Value>,
         file_path: &str,
         target_storage: &str,
+        has_storage_type_sections: bool,
     ) -> Result<ScatterFile, AppError> {
         let mut platform = String::new();
         let mut project = String::new();
@@ -251,11 +260,42 @@ impl ScatterParser {
                                             {
                                                 project = proj.clone();
                                             }
+                                            if let Some(Value::String(storage)) =
+                                                info_map.get("storage")
+                                            {
+                                                storage_type = storage.clone();
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
+                    }
+                }
+
+                if !has_storage_type_sections {
+                    // Old format: partitions are top-level docs with partition_index.
+                    if let Some(Value::String(index)) = map.get("partition_index") {
+                        let partition = ScatterPartition {
+                            index: index.clone(),
+                            partition_name: Self::get_string(&map, "partition_name")
+                                .unwrap_or_default(),
+                            file_name: Self::get_optional_string(&map, "file_name"),
+                            is_download: Self::get_bool(&map, "is_download").unwrap_or(false),
+                            partition_type: Self::get_string(&map, "type").unwrap_or_default(),
+                            linear_start_addr: Self::get_string(&map, "linear_start_addr")
+                                .unwrap_or_default(),
+                            physical_start_addr: Self::get_string(&map, "physical_start_addr")
+                                .unwrap_or_default(),
+                            partition_size: Self::get_string(&map, "partition_size")
+                                .unwrap_or_default(),
+                            region: Self::get_string(&map, "region").unwrap_or_default(),
+                            storage: Self::get_string(&map, "storage").unwrap_or_default(),
+                            operation_type: Self::get_string(&map, "operation_type")
+                                .unwrap_or_default(),
+                        };
+
+                        partitions.push(partition);
                     }
                 }
 
