@@ -29,7 +29,7 @@ export function parseTauriError(error: unknown): AppError {
     return {
       type: 'other',
       message: error,
-      category: categorizeErrorString(error),
+      category: ErrorCategory.Unknown,
     };
   }
 
@@ -54,7 +54,7 @@ export function parseTauriError(error: unknown): AppError {
       return {
         type: 'other',
         message: err.message,
-        category: categorizeErrorString(err.message),
+        category: ErrorCategory.Unknown,
       };
     }
 
@@ -106,71 +106,6 @@ function parseCategory(category?: string): typeof ErrorCategory[keyof typeof Err
     default:
       return ErrorCategory.Unknown;
   }
-}
-
-/**
- * Categorize an error based on its message content
- */
-function categorizeErrorString(message: string): typeof ErrorCategory[keyof typeof ErrorCategory] {
-  const lowerMessage = message.toLowerCase();
-
-  // Network-related errors
-  if (
-    lowerMessage.includes('network') ||
-    lowerMessage.includes('connection') ||
-    lowerMessage.includes('timeout') ||
-    lowerMessage.includes('dns') ||
-    lowerMessage.includes('github') ||
-    lowerMessage.includes('download') ||
-    lowerMessage.includes('fetch')
-  ) {
-    return ErrorCategory.Network;
-  }
-
-  // Permission-related errors
-  if (
-    lowerMessage.includes('permission') ||
-    lowerMessage.includes('access denied') ||
-    lowerMessage.includes('error code 5') ||
-    lowerMessage.includes('error code 32') ||
-    lowerMessage.includes('sharing violation') ||
-    lowerMessage.includes('administrator')
-  ) {
-    return ErrorCategory.Permission;
-  }
-
-  // File system errors
-  if (
-    lowerMessage.includes('file') ||
-    lowerMessage.includes('directory') ||
-    lowerMessage.includes('path') ||
-    lowerMessage.includes('not found') ||
-    lowerMessage.includes('disk full') ||
-    lowerMessage.includes('no space')
-  ) {
-    return ErrorCategory.FileSystem;
-  }
-
-  // Command errors
-  if (
-    lowerMessage.includes('command') ||
-    lowerMessage.includes('execution') ||
-    lowerMessage.includes('antumbra')
-  ) {
-    return ErrorCategory.Command;
-  }
-
-  // Update-specific errors
-  if (
-    lowerMessage.includes('update') ||
-    lowerMessage.includes('checksum') ||
-    lowerMessage.includes('hash') ||
-    lowerMessage.includes('verification')
-  ) {
-    return ErrorCategory.Update;
-  }
-
-  return ErrorCategory.Unknown;
 }
 
 /**

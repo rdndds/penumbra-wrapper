@@ -7,6 +7,56 @@
 import { ErrorCategory } from '../../types';
 import { parseTauriError } from './errorParser';
 
+const CATEGORY_SUGGESTIONS: Partial<Record<ErrorCategory, string>> = {
+  [ErrorCategory.Permission]:
+    'Permission denied. Run as Administrator or check your antivirus software.',
+  [ErrorCategory.Network]:
+    'Network error. Check your internet connection and try again.',
+  [ErrorCategory.FileSystem]:
+    'File system error. Check file permissions and disk space.',
+  [ErrorCategory.Update]:
+    'Update failed. Try again or check for available updates.',
+};
+
+const TROUBLESHOOTING_RULES: Array<{
+  category: ErrorCategory[];
+  steps: string[];
+}> = [
+  {
+    category: [ErrorCategory.Permission],
+    steps: [
+      'Close any running instances of antumbra.exe',
+      'Check Task Manager for antumbra.exe processes',
+      'Try updating again after closing all instances',
+    ],
+  },
+  {
+    category: [ErrorCategory.Permission],
+    steps: [
+      'Run PenumbraWrapper as Administrator',
+      'Check if antivirus software is blocking the application',
+      'Add PenumbraWrapper to antivirus exceptions list',
+    ],
+  },
+  {
+    category: [ErrorCategory.Network],
+    steps: [
+      'Check your internet connection',
+      'Try disabling VPN temporarily',
+      'Check Windows Firewall settings',
+      'Try updating again in a few minutes',
+    ],
+  },
+  {
+    category: [ErrorCategory.FileSystem],
+    steps: [
+      'Check available disk space',
+      'Clean up temporary files',
+      'Free up space on your system drive',
+    ],
+  },
+];
+
 export class WindowsErrorHandler {
   /**
    * Get Windows-specific error suggestion based on error
@@ -15,87 +65,18 @@ export class WindowsErrorHandler {
   static getErrorSuggestion(error: unknown): string {
     // Parse the error into structured format
     const err = parseTauriError(error);
+    const category = err.category ?? ErrorCategory.Unknown;
     
     if (err.suggestion) {
       return err.suggestion;
     }
 
     // Use category for better suggestions
-    switch (err.category) {
-      case ErrorCategory.Permission:
-        return 'Permission denied. Run as Administrator or check your antivirus software.';
-      case ErrorCategory.Network:
-        return 'Network error. Check your internet connection and try again.';
-      case ErrorCategory.FileSystem:
-        return 'File system error. Check file permissions and disk space.';
-      case ErrorCategory.Update:
-        return 'Update failed. Try again or check for available updates.';
-      default:
-        break;
+    const categorySuggestion = CATEGORY_SUGGESTIONS[category];
+    if (categorySuggestion) {
+      return categorySuggestion;
     }
 
-    // Fall back to string matching for legacy errors
-    const lowerError = err.message?.toLowerCase() || '';
-    
-    // File sharing violation - file is in use
-    if (lowerError.includes('sharing violation') || 
-        lowerError.includes('file in use') ||
-        lowerError.includes('being used by another process')) {
-      return 'antumbra.exe is currently running. Please close it and try again.';
-    }
-    
-    // Access denied - permissions or security software
-    if (lowerError.includes('access denied') || 
-        lowerError.includes('permission denied')) {
-      return 'Permission denied. Run as Administrator or check your antivirus software.';
-    }
-    
-    // Disk space issues
-    if (lowerError.includes('disk full') || 
-        lowerError.includes('insufficient disk space') ||
-        lowerError.includes('no space left on device')) {
-      return 'Insufficient disk space. Free up space and retry.';
-    }
-    
-    // Path not found
-    if (lowerError.includes('path not found') || 
-        lowerError.includes('file not found') ||
-        lowerError.includes('the system cannot find the path specified')) {
-      return 'antumbra.exe not found. Check your installation path.';
-    }
-    
-    // Network issues
-    if (lowerError.includes('network') || 
-        lowerError.includes('connection') ||
-        lowerError.includes('timeout') ||
-        lowerError.includes('dns')) {
-      return 'Network error. Check your internet connection and try again.';
-    }
-    
-    // Checksum mismatch
-    if (lowerError.includes('checksum') || 
-        lowerError.includes('hash') ||
-        lowerError.includes('verification failed')) {
-      return 'Download verification failed. The file may be corrupted. Try downloading again.';
-    }
-    
-    // API/HTTP errors
-    if (lowerError.includes('api') || 
-        lowerError.includes('github') ||
-        lowerError.includes('404') ||
-        lowerError.includes('rate limit')) {
-      return 'Failed to connect to GitHub. Check your internet connection or try again later.';
-    }
-    
-    // Generic Windows error codes
-    if (lowerError.includes('error code 32')) {
-      return 'File is in use by another program. Close antumbra.exe and try again.';
-    }
-    
-    if (lowerError.includes('error code 5')) {
-      return 'Access denied. Run as Administrator or add exception in antivirus software.';
-    }
-    
     return `Download antumbra update failed: ${err.message || error}`;
   }
   
@@ -105,25 +86,14 @@ export class WindowsErrorHandler {
    */
   static isWindowsError(error: unknown): boolean {
     const err = parseTauriError(error);
+    const category = err.category ?? ErrorCategory.Unknown;
     
     // Check category first
-    if (err.category === ErrorCategory.Permission ||
-        err.category === ErrorCategory.FileSystem) {
+    if (category === ErrorCategory.Permission || category === ErrorCategory.FileSystem) {
       return true;
     }
-    
-    // Fall back to string matching
-    const lowerError = err.message?.toLowerCase() || '';
-    return (
-      lowerError.includes('sharing violation') ||
-      lowerError.includes('access denied') ||
-      lowerError.includes('file in use') ||
-      lowerError.includes('error code') ||
-      lowerError.includes('disk full') ||
-      lowerError.includes('permission denied') ||
-      lowerError.includes('path not found') ||
-      lowerError.includes('antumbra.exe')
-    );
+
+    return false;
   }
   
   /**
@@ -132,42 +102,13 @@ export class WindowsErrorHandler {
    */
   static getTroubleshootingSteps(error: unknown): string[] {
     const err = parseTauriError(error);
+    const category = err.category ?? ErrorCategory.Unknown;
     const steps: string[] = [];
-    const lowerError = err.message?.toLowerCase() || '';
-    
-    // Use error category for better step suggestions
-    if (err.category === ErrorCategory.Permission ||
-        lowerError.includes('file in use') || 
-        lowerError.includes('sharing violation') ||
-        lowerError.includes('error code 32')) {
-      steps.push('Close any running instances of antumbra.exe');
-      steps.push('Check Task Manager for antumbra.exe processes');
-      steps.push('Try updating again after closing all instances');
-    }
-    
-    if (err.category === ErrorCategory.Permission ||
-        lowerError.includes('access denied') || 
-        lowerError.includes('permission') ||
-        lowerError.includes('error code 5')) {
-      steps.push('Run PenumbraWrapper as Administrator');
-      steps.push('Check if antivirus software is blocking the application');
-      steps.push('Add PenumbraWrapper to antivirus exceptions list');
-    }
-    
-    if (err.category === ErrorCategory.Network ||
-        lowerError.includes('network') || 
-        lowerError.includes('github')) {
-      steps.push('Check your internet connection');
-      steps.push('Try disabling VPN temporarily');
-      steps.push('Check Windows Firewall settings');
-      steps.push('Try updating again in a few minutes');
-    }
-    
-    if (err.category === ErrorCategory.FileSystem ||
-        lowerError.includes('disk full')) {
-      steps.push('Check available disk space');
-      steps.push('Clean up temporary files');
-      steps.push('Free up space on your system drive');
+
+    for (const rule of TROUBLESHOOTING_RULES) {
+      if (rule.category.includes(category)) {
+        steps.push(...rule.steps);
+      }
     }
     
     return steps;

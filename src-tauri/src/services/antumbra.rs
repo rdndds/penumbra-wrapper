@@ -36,6 +36,49 @@ fn binary_name() -> &'static str {
     if cfg!(windows) { "antumbra.exe" } else { "antumbra" }
 }
 
+fn emit_stream_line(
+    app: &AppHandle,
+    operation_id: &str,
+    is_stderr: bool,
+    lines_storage: &Arc<Mutex<Vec<String>>>,
+    seen_lines: &Arc<Mutex<HashSet<String>>>,
+    line: String,
+) {
+    let should_emit = match seen_lines.lock() {
+        Ok(mut seen) => {
+            if seen.contains(&line) {
+                false
+            } else {
+                seen.insert(line.clone());
+                true
+            }
+        }
+        Err(_) => {
+            log::warn!("Failed to lock seen lines; emitting anyway");
+            true
+        }
+    };
+
+    if !should_emit {
+        return;
+    }
+
+    if let Ok(mut storage) = lines_storage.lock() {
+        storage.push(line.clone());
+    } else {
+        log::warn!("Failed to lock output storage");
+    }
+
+    let timestamp = Utc::now().to_rfc3339();
+    let event = OperationOutputEvent {
+        operation_id: operation_id.to_string(),
+        line,
+        timestamp,
+        is_stderr,
+    };
+    let _ = app.emit("operation:output", event);
+}
+
 /// Read from a stream and emit lines split by either '\n' or '\r'
 /// This handles progress bars that use carriage returns to update in place
 async fn stream_lines<R>(
@@ -62,40 +105,14 @@ async fn stream_lines<R>(
                         if let Ok(line) = String::from_utf8(buffer.clone()) {
                             let line = line.trim().to_string();
                             if !line.is_empty() {
-                                // Check if we've already emitted this exact line recently
-                                let should_emit = match seen_lines.lock() {
-                                    Ok(mut seen) => {
-                                        if seen.contains(&line) {
-                                            false
-                                        } else {
-                                            seen.insert(line.clone());
-                                            true
-                                        }
-                                    }
-                                    Err(_) => {
-                                        log::warn!("Failed to lock seen lines; emitting anyway");
-                                        true
-                                    }
-                                };
-
-                                if should_emit {
-                                    // Store for return value
-                                    if let Ok(mut storage) = lines_storage.lock() {
-                                        storage.push(line.clone());
-                                    } else {
-                                        log::warn!("Failed to lock output storage");
-                                    }
-
-                                    // Emit event
-                                    let timestamp = Utc::now().to_rfc3339();
-                                    let event = OperationOutputEvent {
-                                        operation_id: operation_id.clone(),
-                                        line,
-                                        timestamp,
-                                        is_stderr,
-                                    };
-                                    let _ = app.emit("operation:output", event);
-                                }
+                                emit_stream_line(
+                                    &app,
+                                    &operation_id,
+                                    is_stderr,
+                                    &lines_storage,
+                                    &seen_lines,
+                                    line,
+                                );
                             }
                         }
                         buffer.clear();
@@ -113,36 +130,14 @@ async fn stream_lines<R>(
         if let Ok(line) = String::from_utf8(buffer) {
             let line = line.trim().to_string();
             if !line.is_empty() {
-                let should_emit = match seen_lines.lock() {
-                    Ok(mut seen) => {
-                        if seen.contains(&line) {
-                            false
-                        } else {
-                            seen.insert(line.clone());
-                            true
-                        }
-                    }
-                    Err(_) => {
-                        log::warn!("Failed to lock seen lines; emitting anyway");
-                        true
-                    }
-                };
-
-                if should_emit {
-                    if let Ok(mut storage) = lines_storage.lock() {
-                        storage.push(line.clone());
-                    } else {
-                        log::warn!("Failed to lock output storage");
-                    }
-                    let timestamp = Utc::now().to_rfc3339();
-                    let event = OperationOutputEvent {
-                        operation_id: operation_id.clone(),
-                        line,
-                        timestamp,
-                        is_stderr,
-                    };
-                    let _ = app.emit("operation:output", event);
-                }
+                emit_stream_line(
+                    &app,
+                    &operation_id,
+                    is_stderr,
+                    &lines_storage,
+                    &seen_lines,
+                    line,
+                );
             }
         }
     }

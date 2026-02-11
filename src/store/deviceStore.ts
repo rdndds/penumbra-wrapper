@@ -26,6 +26,7 @@ interface DeviceState {
   setPreloaderPath: (path: string | null) => Promise<void>;
   setDefaultOutputPath: (path: string | null) => Promise<void>;
   setAutoCheckUpdates: (enabled: boolean) => Promise<void>;
+  updateSettings: (partial: Partial<DeviceState>) => Promise<void>;
   setConnecting: (connecting: boolean) => void;
   setConnected: (connected: boolean) => void;
   setConnectionError: (error: string | null) => void;
@@ -33,8 +34,16 @@ interface DeviceState {
   
   // Settings
   loadSettings: () => Promise<void>;
-  saveSettings: () => Promise<void>;
+  saveSettings: (state?: DeviceState) => Promise<void>;
 }
+
+const buildSettings = (state: DeviceState): AppSettings => ({
+  da_path: state.daPath || undefined,
+  preloader_path: state.preloaderPath || undefined,
+  default_output_path: state.defaultOutputPath || undefined,
+  auto_check_updates: state.autoCheckUpdates,
+  antumbra_version: state.antumbraVersion || undefined,
+});
 
 export const useDeviceStore = create<DeviceState>((set, get) => ({
   // Configuration
@@ -56,23 +65,33 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
 
   // Actions
   setDaPath: async (path) => {
-    set({ daPath: path });
-    await get().saveSettings();
+    await get().updateSettings({ daPath: path });
   },
 
   setPreloaderPath: async (path) => {
-    set({ preloaderPath: path });
-    await get().saveSettings();
+    await get().updateSettings({ preloaderPath: path });
   },
 
   setDefaultOutputPath: async (path) => {
-    set({ defaultOutputPath: path });
-    await get().saveSettings();
+    await get().updateSettings({ defaultOutputPath: path });
   },
 
   setAutoCheckUpdates: async (enabled) => {
-    set({ autoCheckUpdates: enabled });
-    await get().saveSettings();
+    await get().updateSettings({ autoCheckUpdates: enabled });
+  },
+
+  updateSettings: async (partial) => {
+    const state = get();
+    const hasChanges = Object.keys(partial).some((key) => {
+      const typedKey = key as keyof DeviceState;
+      return state[typedKey] !== partial[typedKey];
+    });
+
+    if (!hasChanges) return;
+
+    const nextState = { ...state, ...partial } as DeviceState;
+    set(partial as Partial<DeviceState>);
+    await get().saveSettings(nextState);
   },
 
   setConnecting: (connecting) => set({ isConnecting: connecting }),
@@ -118,16 +137,10 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
     }
   },
 
-  saveSettings: async () => {
+  saveSettings: async (stateOverride) => {
     try {
-      const { daPath, preloaderPath, defaultOutputPath, autoCheckUpdates, antumbraVersion } = get();
-      const settings: AppSettings = {
-        da_path: daPath || undefined,
-        preloader_path: preloaderPath || undefined,
-        default_output_path: defaultOutputPath || undefined,
-        auto_check_updates: autoCheckUpdates,
-        antumbra_version: antumbraVersion || undefined,
-      };
+      const sourceState = stateOverride || get();
+      const settings = buildSettings(sourceState);
       await SettingsApi.updateSettings(settings);
     } catch (error) {
       ErrorHandler.handle(error, 'Save settings', {

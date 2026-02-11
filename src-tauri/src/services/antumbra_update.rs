@@ -240,6 +240,108 @@ fn emit_progress(app: &AppHandle, status: &str, bytes: u64, total: u64, attempt:
     }.emit(app);
 }
 
+fn emit_retry_message(app: &AppHandle, attempt: u32, max: u32, delay_ms: u64, reason: &str) {
+    emit_progress(
+        app,
+        "retrying",
+        0,
+        0,
+        attempt,
+        max,
+        &format!("{}. Retrying in {}s...", reason, delay_ms / 1000),
+    );
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DownloadMethod {
+    AsyncStreaming,
+    Blocking,
+    #[cfg(unix)]
+    Curl,
+    #[cfg(windows)]
+    PowerShell,
+}
+
+fn build_download_methods(attempt: u32, max: u32) -> Vec<DownloadMethod> {
+    if attempt < max {
+        return vec![DownloadMethod::AsyncStreaming];
+    }
+
+    let mut methods = vec![DownloadMethod::AsyncStreaming, DownloadMethod::Blocking];
+
+    #[cfg(unix)]
+    methods.push(DownloadMethod::Curl);
+    #[cfg(windows)]
+    methods.push(DownloadMethod::PowerShell);
+
+    methods
+}
+
+async fn try_download_method(
+    app: &AppHandle,
+    method: DownloadMethod,
+    url: &str,
+    temp_path: &Path,
+    attempt: u32,
+    max_attempts: u32,
+) -> Result<u64> {
+    match method {
+        DownloadMethod::AsyncStreaming => {
+            emit_progress(
+                app,
+                "downloading",
+                0,
+                0,
+                attempt,
+                max_attempts,
+                &format!("Download attempt {}/{}...", attempt, max_attempts),
+            );
+            try_download_async_streaming(app, url, temp_path).await
+        }
+        DownloadMethod::Blocking => {
+            emit_progress(
+                app,
+                "fallback_blocking",
+                0,
+                0,
+                attempt,
+                max_attempts,
+                "Trying alternative download method...",
+            );
+            try_download_blocking(url, temp_path)?;
+            Ok(0)
+        }
+        #[cfg(unix)]
+        DownloadMethod::Curl => {
+            emit_progress(
+                app,
+                "fallback_curl",
+                0,
+                0,
+                attempt,
+                max_attempts,
+                "Trying system download...",
+            );
+            try_download_curl(url, temp_path)?;
+            Ok(0)
+        }
+        #[cfg(windows)]
+        DownloadMethod::PowerShell => {
+            emit_progress(
+                app,
+                "fallback_powershell",
+                0,
+                0,
+                attempt,
+                max_attempts,
+                "Trying system download...",
+            );
+            try_download_powershell(url, temp_path)?;
+            Ok(0)
+        }
+    }
+}
+
 async fn download_file_with_retry_and_progress(
     app: &AppHandle,
     url: &str,
@@ -247,107 +349,75 @@ async fn download_file_with_retry_and_progress(
     expected_checksum: &str,
 ) -> Result<()> {
     const MAX_RETRIES: u32 = 3;
-    
-    for attempt in 1..=MAX_RETRIES {
-        emit_progress(app, "downloading", 0, 0, attempt, MAX_RETRIES, 
-            &format!("Download attempt {}/{}...", attempt, MAX_RETRIES));
-        
+
+    'attempts: for attempt in 1..=MAX_RETRIES {
         // Clean temp file before attempt
         if temp_path.exists() {
             let _ = fs::remove_file(temp_path);
         }
-        
-        // Try async streaming first (primary method)
-        log::info!("Download attempt {}/{}: Trying async streaming method...", attempt, MAX_RETRIES);
-        match try_download_async_streaming(app, url, temp_path).await {
-            Ok(total_bytes) => {
-                emit_progress(app, "verifying", total_bytes, total_bytes, attempt, MAX_RETRIES, 
-                    "Verifying download checksum...");
-                
-                if verify_file_checksum(temp_path, expected_checksum)? {
-                    emit_progress(app, "completed", total_bytes, total_bytes, attempt, MAX_RETRIES, 
-                        "Download successful and verified!");
-                    return Ok(());
-                } else {
+
+        let methods = build_download_methods(attempt, MAX_RETRIES);
+
+        for method in methods {
+            let result = try_download_method(app, method, url, temp_path, attempt, MAX_RETRIES).await;
+            match result {
+                Ok(total_bytes) => {
+                    emit_progress(
+                        app,
+                        "verifying",
+                        total_bytes,
+                        total_bytes,
+                        attempt,
+                        MAX_RETRIES,
+                        "Verifying download checksum...",
+                    );
+
+                    if verify_file_checksum(temp_path, expected_checksum)? {
+                        emit_progress(
+                            app,
+                            "completed",
+                            total_bytes,
+                            total_bytes,
+                            attempt,
+                            MAX_RETRIES,
+                            "Download successful and verified!",
+                        );
+                        return Ok(());
+                    }
+
                     log::warn!("Checksum mismatch on attempt {}", attempt);
                     cleanup_temp_file(temp_path);
-                    
+
                     if attempt < MAX_RETRIES {
                         let delay = attempt as u64 * 1000;
-                        emit_progress(app, "retrying", 0, 0, attempt, MAX_RETRIES, 
-                            &format!("Checksum mismatch. Retrying in {}s...", delay / 1000));
+                        emit_retry_message(app, attempt, MAX_RETRIES, delay, "Checksum mismatch");
                         tokio::time::sleep(Duration::from_millis(delay)).await;
-                        continue;
+                        continue 'attempts;
                     }
+
+                    return Err(anyhow::anyhow!(
+                        "Checksum mismatch after {} attempts",
+                        attempt
+                    ));
                 }
-            }
-            Err(e) => {
-                log::error!("Async download failed: {}", e);
-                cleanup_temp_file(temp_path);
-                
-                // Fallback 1: Try blocking reqwest
-                if attempt == MAX_RETRIES {
-                    log::info!("Attempting blocking download fallback...");
-                    emit_progress(app, "fallback_blocking", 0, 0, attempt, MAX_RETRIES, 
-                        "Trying alternative download method...");
-                    
-                    match try_download_blocking(url, temp_path) {
-                        Ok(()) => {
-                            if verify_file_checksum(temp_path, expected_checksum)? {
-                                emit_progress(app, "completed", 0, 0, attempt, MAX_RETRIES, 
-                                    "Download successful!");
-                                return Ok(());
-                            }
-                        }
-                        Err(e) => {
-                            log::error!("Blocking download failed: {}", e);
-                            cleanup_temp_file(temp_path);
-                            
-                            // Fallback 2: Try system commands
-                            #[cfg(unix)]
-                            {
-                                log::info!("Attempting curl fallback...");
-                                emit_progress(app, "fallback_curl", 0, 0, attempt, MAX_RETRIES, 
-                                    "Trying system download...");
-                                
-                                if try_download_curl(url, temp_path).is_ok() 
-                                    && verify_file_checksum(temp_path, expected_checksum)? 
-                                {
-                                    emit_progress(app, "completed", 0, 0, attempt, MAX_RETRIES, 
-                                        "Download successful!");
-                                    return Ok(());
-                                }
-                            }
-                            
-                            #[cfg(windows)]
-                            {
-                                log::info!("Attempting PowerShell fallback...");
-                                emit_progress(app, "fallback_powershell", 0, 0, attempt, MAX_RETRIES, 
-                                    "Trying system download...");
-                                
-                                if try_download_powershell(url, temp_path).is_ok()
-                                    && verify_file_checksum(temp_path, expected_checksum)?
-                                {
-                                    emit_progress(app, "completed", 0, 0, attempt, MAX_RETRIES, 
-                                        "Download successful!");
-                                    return Ok(());
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                if attempt < MAX_RETRIES {
-                    let delay = attempt as u64 * 2000; // 2s, 4s
-                    emit_progress(app, "retrying", 0, 0, attempt, MAX_RETRIES, 
-                        &format!("Download failed. Retrying in {}s...", delay / 1000));
-                    tokio::time::sleep(Duration::from_millis(delay)).await;
+                Err(err) => {
+                    log::error!("Download method failed on attempt {}: {}", attempt, err);
+                    cleanup_temp_file(temp_path);
                 }
             }
         }
+
+        if attempt < MAX_RETRIES {
+            let delay = attempt as u64 * 2000; // 2s, 4s
+            emit_retry_message(app, attempt, MAX_RETRIES, delay, "Download failed");
+            tokio::time::sleep(Duration::from_millis(delay)).await;
+        }
     }
-    
-    Err(anyhow::anyhow!("Failed to download after {} attempts and all fallbacks", MAX_RETRIES))
+
+    Err(anyhow::anyhow!(
+        "Failed to download after {} attempts and all fallbacks",
+        MAX_RETRIES
+    ))
 }
 
 async fn try_download_async_streaming(app: &AppHandle, url: &str, temp_path: &Path) -> Result<u64> {
