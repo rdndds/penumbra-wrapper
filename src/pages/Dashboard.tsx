@@ -89,10 +89,8 @@ export function Dashboard() {
         unlistenFn = await listen<DownloadProgress>('antumbra-download-progress', (event) => {
           setDownloadProgress(event.payload);
           
-          // Show toast for important status changes
-          if (event.payload.status === 'completed') {
-            toast.success('Download completed successfully!');
-          } else if (event.payload.status === 'failed') {
+          // Show toast for failed downloads
+          if (event.payload.status === 'failed') {
             toast.error(`Download failed: ${event.payload.message}`);
           }
         });
