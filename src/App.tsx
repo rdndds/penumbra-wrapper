@@ -7,81 +7,53 @@ import { Flasher } from './pages/Flasher';
 import { Tools } from './pages/Tools';
 import { LogPanel } from './components/LogPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { UpdateAvailableModal } from './components/UpdateAvailableModal';
 import { useOperationStream } from './hooks/useOperationStream';
 import { useSettings } from './hooks/useSettings';
-import { useConfirmation } from './hooks/useConfirmation';
 import { ConfirmationProvider } from './hooks/confirmationProvider';
-import { AntumbraApi } from './services/api/antumbraApi';
 import { DeviceApi } from './services/api/deviceApi';
-import { ErrorHandler } from './services/utils/errorHandler';
-import { WindowsErrorHandler } from './services/utils/windowsErrorHandler';
 import { useDeviceStore } from './store/deviceStore';
-import toast from 'react-hot-toast';
+import { useUpdateStore } from './store/updateStore';
 
 function AppContent() {
   useOperationStream();
 
   const { isLoading: isSettingsLoading, error: settingsError } = useSettings();
-  const { confirm } = useConfirmation();
   const autoCheckUpdates = useDeviceStore((state) => state.autoCheckUpdates);
   const isSettingsLoaded = useDeviceStore((state) => state.isSettingsLoaded);
   const hasPromptedUpdate = useRef(false);
+  const updateInfo = useUpdateStore((state) => state.updateInfo);
+  const isUpdateModalOpen = useUpdateStore((state) => state.isUpdateModalOpen);
+  const isDownloadingUpdate = useUpdateStore((state) => state.isDownloadingUpdate);
+  const downloadProgress = useUpdateStore((state) => state.downloadProgress);
+  const checkUpdate = useUpdateStore((state) => state.checkUpdate);
+  const downloadUpdate = useUpdateStore((state) => state.downloadUpdate);
+  const setUpdateModalOpen = useUpdateStore((state) => state.setUpdateModalOpen);
+  const startProgressListener = useUpdateStore((state) => state.startProgressListener);
+
+  useEffect(() => {
+    let cleanup: (() => void) | null = null;
+
+    startProgressListener()
+      .then((unlisten) => {
+        cleanup = unlisten;
+      })
+      .catch(() => undefined);
+
+    return () => {
+      if (cleanup) {
+        cleanup();
+      }
+    };
+  }, [startProgressListener]);
 
   useEffect(() => {
     if (!isSettingsLoaded || !autoCheckUpdates) return;
     if (hasPromptedUpdate.current) return;
     hasPromptedUpdate.current = true;
 
-    const checkUpdates = async () => {
-      try {
-        const info = await AntumbraApi.checkUpdate();
-        if (!info.supported) return;
-
-        if (!info.installed_path) {
-          const confirmed = await confirm({
-            title: 'Antumbra Not Installed',
-            message: 'Antumbra is required to connect to devices. Download it now?',
-            variant: 'info',
-            confirmText: 'Download',
-            cancelText: 'Later',
-          });
-
-          if (confirmed) {
-            const result = await AntumbraApi.downloadUpdate();
-            toast.success(`Antumbra downloaded (${result.version})`);
-          }
-
-          return;
-        }
-
-        if (info.update_available) {
-          const confirmed = await confirm({
-            title: 'Antumbra Update Available',
-            message: `A newer antumbra build is available (${info.latest_version}). Download now?`,
-            variant: 'info',
-            confirmText: 'Update',
-            cancelText: 'Later',
-          });
-
-          if (confirmed) {
-            const result = await AntumbraApi.downloadUpdate();
-            toast.success(`Antumbra updated to ${result.version}`);
-          }
-        }
-      } catch (error: unknown) {
-        // WindowsErrorHandler now handles structured errors from backend
-        const customMessage = WindowsErrorHandler.getErrorSuggestion(error);
-        
-        ErrorHandler.handle(error, 'Check antumbra updates', {
-          showToast: false,
-          addToOperationLog: false,
-          customMessage,
-        });
-      }
-    };
-
-    checkUpdates();
-  }, [autoCheckUpdates, confirm, isSettingsLoaded]);
+    checkUpdate({ showToast: false });
+  }, [autoCheckUpdates, checkUpdate, isSettingsLoaded]);
 
   useEffect(() => {
     const handleBeforeUnload = () => {
@@ -116,6 +88,15 @@ function AppContent() {
         </Route>
       </Routes>
       <Toaster position="bottom-right" />
+
+      <UpdateAvailableModal
+        isOpen={isUpdateModalOpen}
+        onClose={() => setUpdateModalOpen(false)}
+        onDownload={downloadUpdate}
+        updateInfo={updateInfo}
+        isDownloading={isDownloadingUpdate}
+        downloadProgress={downloadProgress}
+      />
 
       <ErrorBoundary>
         <LogPanel />

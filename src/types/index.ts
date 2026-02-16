@@ -58,6 +58,16 @@ export interface AntumbraUpdateResult {
   path: string;
 }
 
+export interface DownloadProgress {
+  bytes_downloaded: number;
+  total_bytes: number;
+  percentage: number;
+  status: string;
+  attempt: number;
+  max_attempts: number;
+  message: string;
+}
+
 export type OperationType = 'read' | 'write' | null;
 
 // Windows diagnostics types

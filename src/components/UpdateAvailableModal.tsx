@@ -1,16 +1,6 @@
 import { useEffect, useState } from 'react';
-import { X, Download, AlertCircle, Loader2 } from 'lucide-react';
-import type { AntumbraUpdateInfo } from '../types';
-
-export interface DownloadProgress {
-  bytes_downloaded: number;
-  total_bytes: number;
-  percentage: number;
-  status: string;
-  attempt: number;
-  max_attempts: number;
-  message: string;
-}
+import { X, Download, Loader2 } from 'lucide-react';
+import type { AntumbraUpdateInfo, DownloadProgress } from '../types';
 
 export interface UpdateAvailableModalProps {
   isOpen: boolean;
@@ -57,7 +47,12 @@ export function UpdateAvailableModal({
   }, [isOpen, onClose, isDownloading]);
 
   if (!isVisible && !isOpen) return null;
-  if (!updateInfo || !updateInfo.update_available) return null;
+  if (!updateInfo || !updateInfo.supported) return null;
+
+  const isFirstInstall = !updateInfo.installed_path || !updateInfo.installed_version;
+  const shouldRender = updateInfo.update_available || isFirstInstall;
+
+  if (!shouldRender) return null;
 
   const formatBytes = (bytes: number): string => {
     if (bytes === 0) return '0 B';
@@ -95,6 +90,12 @@ export function UpdateAvailableModal({
     return null;
   };
 
+  const titleText = isFirstInstall ? 'Antumbra Required' : 'Antumbra Update Available';
+  const primaryActionText = isFirstInstall ? 'Download Antumbra' : 'Download Update';
+  const messageText = isFirstInstall
+    ? 'Antumbra is required to connect to devices. Download it now?'
+    : 'A newer antumbra build is available. Download now?';
+
   return (
     <>
       {/* Backdrop */}
@@ -115,7 +116,7 @@ export function UpdateAvailableModal({
           {/* Header */}
           <div className="flex items-start gap-3 p-5 border-b border-zinc-800">
             <Download className="w-6 h-6 text-blue-400 flex-shrink-0 mt-0.5" />
-            <h2 className="text-xl font-semibold text-zinc-100 flex-1">Antumbra Update Available</h2>
+            <h2 className="text-xl font-semibold text-zinc-100 flex-1">{titleText}</h2>
             <button
               onClick={onClose}
               disabled={isDownloading}
@@ -127,14 +128,20 @@ export function UpdateAvailableModal({
 
           {/* Content */}
           <div className="p-5 text-zinc-300 space-y-4">
+            <p className="text-sm text-zinc-400">{messageText}</p>
+
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-zinc-400">Installed:</span>
-                <span className="font-mono text-sm">{updateInfo.installed_version || 'Unknown'}</span>
+                <span className="font-mono text-sm">
+                  {isFirstInstall ? 'Not installed' : updateInfo.installed_version || 'Unknown'}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-zinc-400">Latest:</span>
-                <span className="font-mono text-sm text-blue-400">{updateInfo.latest_version}</span>
+                <span className="font-mono text-sm text-blue-400">
+                  {updateInfo.latest_version || 'Unknown'}
+                </span>
               </div>
             </div>
 
@@ -188,12 +195,6 @@ export function UpdateAvailableModal({
               </div>
             )}
 
-            {!updateInfo.supported && updateInfo.message && (
-              <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded">
-                <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-amber-300">{updateInfo.message}</p>
-              </div>
-            )}
           </div>
 
           {/* Footer */}
@@ -211,7 +212,7 @@ export function UpdateAvailableModal({
               className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <Download className="w-4 h-4" />
-              {isDownloading ? 'Downloading...' : 'Download Update'}
+              {isDownloading ? 'Downloading...' : primaryActionText}
             </button>
           </div>
         </div>

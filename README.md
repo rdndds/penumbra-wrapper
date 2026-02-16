@@ -15,3 +15,10 @@ npm run dev
 npm run build
 npm run tauri:build
 ```
+
+## Credits
+
+This GUI wraps the `antumbra` binary provided by the Penumbra project and its contributors.
+
+- Penumbra repository: https://github.com/shomykohai/penumbra
+- Contributors: https://github.com/shomykohai/penumbra/graphs/contributors

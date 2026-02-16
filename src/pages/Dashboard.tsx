@@ -10,31 +10,18 @@ import { DashboardHeader } from '../components/dashboard/DashboardHeader';
 import { ConnectionPanel } from '../components/dashboard/ConnectionPanel';
 import { PartitionSection } from '../components/dashboard/PartitionSection';
 import { OperationModal } from '../components/OperationModal';
-import { UpdateAvailableModal } from '../components/UpdateAvailableModal';
 import { useConfirmation } from '../hooks/useConfirmation';
 import { DialogType } from '../services/dialogs/fileDialogService';
 import { DeviceApi } from '../services/api/deviceApi';
 import { PartitionApi } from '../services/api/partitionApi';
-import { AntumbraApi } from '../services/api/antumbraApi';
 import { executeOperation } from '../services/operations/executeOperation';
 import { generateTimestampedFilename, joinPath, getBasename } from '../services/utils/pathUtils';
 import { ErrorHandler } from '../services/utils/errorHandler';
-import { WindowsErrorHandler } from '../services/utils/windowsErrorHandler';
 import toast from 'react-hot-toast';
-import type { Partition, AntumbraUpdateInfo } from '../types';
+import type { Partition } from '../types';
 import { v4 as uuidv4 } from 'uuid';
-import { listen } from '@tauri-apps/api/event';
+import { useUpdateStore } from '../store/updateStore';
 import { mkdir } from '@tauri-apps/plugin-fs';
-
-interface DownloadProgress {
-  bytes_downloaded: number;
-  total_bytes: number;
-  percentage: number;
-  status: string;
-  attempt: number;
-  max_attempts: number;
-  message: string;
-}
 
 const CRITICAL_PARTITIONS = ['nvram', 'nvdata', 'nvcfg', 'proinfo', 'protect1', 'protect2'];
 
@@ -74,39 +61,8 @@ export function Dashboard() {
   const [backupAbortController, setBackupAbortController] = useState<AbortController | null>(null);
   const backupCancelReasonRef = useRef<'disconnect' | null>(null);
 
-  const [updateModalOpen, setUpdateModalOpen] = useState(false);
-  const [updateInfo, setUpdateInfo] = useState<AntumbraUpdateInfo | null>(null);
-  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
-  const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
-
-  // Listen for download progress events
-  useEffect(() => {
-    let unlistenFn: (() => void) | null = null;
-
-    const setupListener = async () => {
-      try {
-        unlistenFn = await listen<DownloadProgress>('antumbra-download-progress', (event) => {
-          setDownloadProgress(event.payload);
-          
-          // Show toast for failed downloads
-          if (event.payload.status === 'failed') {
-            toast.error(`Download failed: ${event.payload.message}`);
-          }
-        });
-      } catch (error) {
-        console.error('Failed to setup download progress listener:', error);
-      }
-    };
-
-    setupListener();
-
-    return () => {
-      if (unlistenFn) {
-        unlistenFn();
-      }
-    };
-  }, []);
+  const isCheckingUpdate = useUpdateStore((state) => state.isCheckingUpdate);
+  const checkUpdate = useUpdateStore((state) => state.checkUpdate);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -180,64 +136,7 @@ export function Dashboard() {
   };
 
   const handleCheckUpdates = async () => {
-    setIsCheckingUpdate(true);
-    try {
-      const info = await AntumbraApi.checkUpdate();
-      setUpdateInfo(info);
-
-      if (!info.supported) {
-        toast.error(info.message || 'Antumbra updates are not available on this platform');
-        return;
-      }
-
-      if (info.update_available) {
-        setUpdateModalOpen(true);
-      } else {
-        toast.success('Antumbra is up to date');
-      }
-    } catch (error: unknown) {
-      ErrorHandler.handle(error, 'Check antumbra updates', { addToOperationLog: false });
-    } finally {
-      setIsCheckingUpdate(false);
-    }
-  };
-
-  const handleDownloadUpdate = async () => {
-    setIsDownloadingUpdate(true);
-    try {
-      const result = await AntumbraApi.downloadUpdate();
-      toast.success(`Antumbra updated to ${result.version}`);
-      setUpdateModalOpen(false);
-      
-      // Refresh update info
-      const info = await AntumbraApi.checkUpdate();
-      setUpdateInfo(info);
-    } catch (error: unknown) {
-      // Use WindowsErrorHandler with the raw error - it now handles structured errors
-      const customMessage = WindowsErrorHandler.getErrorSuggestion(error);
-      
-      ErrorHandler.handle(error, 'Download antumbra update', { 
-        addToOperationLog: false,
-        customMessage 
-      });
-      
-      // If it's a Windows-specific error, show troubleshooting help
-      if (WindowsErrorHandler.isWindowsError(error)) {
-        const steps = WindowsErrorHandler.getTroubleshootingSteps(error);
-        if (steps.length > 0) {
-          // Add troubleshooting steps to operation log for reference
-          steps.forEach((step, index) => {
-            useOperationStore.getState().addLog({
-              timestamp: new Date().toISOString(),
-              level: 'info',
-              message: `Troubleshooting step ${index + 1}: ${step}`,
-            });
-          });
-        }
-      }
-    } finally {
-      setIsDownloadingUpdate(false);
-    }
+    await checkUpdate({ showToast: true });
   };
 
   const handleConnect = async () => {
@@ -518,15 +417,6 @@ export function Dashboard() {
         onClose={closeModal}
         partition={modalState.partition}
         operation={modalState.operation}
-      />
-
-      <UpdateAvailableModal
-        isOpen={updateModalOpen}
-        onClose={() => setUpdateModalOpen(false)}
-        onDownload={handleDownloadUpdate}
-        updateInfo={updateInfo}
-        isDownloading={isDownloadingUpdate}
-        downloadProgress={downloadProgress}
       />
 
     </div>
