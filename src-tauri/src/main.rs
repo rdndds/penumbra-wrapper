@@ -93,6 +93,7 @@ async fn main() {
             commands::diagnostics::read_antumbra_log,
             commands::diagnostics::get_last_antumbra_command,
             commands::diagnostics::check_windows_environment,
+            commands::fastboot::force_fastboot,
         ])
         .setup(|_app| {
             // Initialize services on startup

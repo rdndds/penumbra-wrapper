@@ -68,6 +68,18 @@ export interface DownloadProgress {
   message: string;
 }
 
+export type FastbootStatus = 'start' | 'success' | 'no_device' | 'open_error' | 'no_ack' | 'error';
+
+export interface FastbootStatusEvent {
+  status: FastbootStatus;
+  message: string;
+}
+
+export interface FastbootResult {
+  status: FastbootStatus;
+  message: string;
+}
+
 export type OperationType = 'read' | 'write' | null;
 
 // Windows diagnostics types

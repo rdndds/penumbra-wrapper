@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { listen } from '@tauri-apps/api/event';
+import type { UnlistenFn } from '@tauri-apps/api/event';
 import { useDeviceStore } from '../store/deviceStore';
 import { usePartitionStore } from '../store/partitionStore';
 import { useOperationStore } from '../store/operationStore';
@@ -7,23 +9,64 @@ import { useFileSelection } from '../hooks/useFileSelection';
 import { DialogType } from '../services/dialogs/fileDialogService';
 import { PartitionApi } from '../services/api/partitionApi';
 import { DeviceApi } from '../services/api/deviceApi';
+import { FastbootApi } from '../services/api/fastbootApi';
 import { executeOperation } from '../services/operations/executeOperation';
 import { ToolsHeader } from '../components/tools/ToolsHeader';
 import { ConnectionWarning } from '../components/tools/ConnectionWarning';
 import { ReadAllSection } from '../components/tools/ReadAllSection';
 import { BootloaderSection } from '../components/tools/BootloaderSection';
+import { FastbootSection } from '../components/tools/FastbootSection';
+import type { FastbootStatusEvent } from '../types';
 import toast from 'react-hot-toast';
 
 export function Tools() {
   const { daPath, preloaderPath, isConnected, isSettingsLoading } = useDeviceStore();
   const { partitions } = usePartitionStore();
-  const { addLog } = useOperationStore();
+  const { addLog, clearLogs } = useOperationStore();
   const { confirm } = useConfirmation();
   const { selectFile } = useFileSelection();
 
   const [isReadAllRunning, setIsReadAllRunning] = useState(false);
   const [isSeccfgRunning, setIsSeccfgRunning] = useState(false);
+  const [isFastbootRunning, setIsFastbootRunning] = useState(false);
   const [skipPartitions, setSkipPartitions] = useState<Set<string>>(new Set());
+  const fastbootToastId = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null;
+    let isMounted = true;
+
+    const setupListener = async () => {
+      unlisten = await listen<FastbootStatusEvent>('fastboot:status', (event) => {
+        if (!isMounted) return;
+        const { status, message } = event.payload;
+
+        if (status === 'start') {
+          fastbootToastId.current = toast.loading(message);
+          setIsFastbootRunning(true);
+          return;
+        }
+
+        const toastId = fastbootToastId.current;
+        if (status === 'success') {
+          toast.success(message, { id: toastId });
+        } else {
+          toast.error(message, { id: toastId });
+        }
+        fastbootToastId.current = undefined;
+        setIsFastbootRunning(false);
+      });
+    };
+
+    setupListener();
+
+    return () => {
+      isMounted = false;
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, []);
 
   const handleSelectAllSkip = () => {
     setSkipPartitions(new Set(partitions.map(p => p.name)));
@@ -180,6 +223,20 @@ export function Tools() {
     }
   };
 
+  const handleForceFastboot = async () => {
+    if (isFastbootRunning) return;
+
+    clearLogs();
+    setIsFastbootRunning(true);
+    try {
+      await FastbootApi.forceFastboot();
+    } catch {
+      toast.error('Failed to start fastboot attempt');
+    } finally {
+      setIsFastbootRunning(false);
+    }
+  };
+
   const backupCount = partitions.length - skipPartitions.size;
 
   return (
@@ -208,6 +265,11 @@ export function Tools() {
           isSettingsLoading={isSettingsLoading}
           onUnlock={() => handleSeccfg('unlock')}
           onLock={() => handleSeccfg('lock')}
+        />
+
+        <FastbootSection
+          isRunning={isFastbootRunning}
+          onForceFastboot={handleForceFastboot}
         />
 
       </main>

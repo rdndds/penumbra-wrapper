@@ -22,3 +22,4 @@ This GUI wraps the `antumbra` binary provided by the Penumbra project and its co
 
 - Penumbra repository: https://github.com/shomykohai/penumbra
 - Contributors: https://github.com/shomykohai/penumbra/graphs/contributors
+- Force fastboot logic inspiration: https://github.com/LoggingNewMemory
