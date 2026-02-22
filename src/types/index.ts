@@ -91,6 +91,8 @@ export interface FastbootDevice {
 
 export type FastbootRebootMode = 'normal' | 'bootloader' | 'recovery';
 
+export type FastbootSlot = 'a' | 'b';
+
 export type OperationType = 'read' | 'write' | null;
 
 // Windows diagnostics types

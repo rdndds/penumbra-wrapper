@@ -96,8 +96,12 @@ async fn main() {
             commands::fastboot::force_fastboot,
             commands::fastboot_tools::fastboot_list_devices,
             commands::fastboot_tools::fastboot_getvar_all,
+            commands::fastboot_tools::fastboot_getvar,
             commands::fastboot_tools::fastboot_flash,
+            commands::fastboot_tools::fastboot_erase,
             commands::fastboot_tools::fastboot_reboot,
+            commands::fastboot_tools::fastboot_set_active_slot,
+            commands::fastboot_tools::fastboot_reboot_fastbootd,
         ])
         .setup(|_app| {
             // Initialize services on startup

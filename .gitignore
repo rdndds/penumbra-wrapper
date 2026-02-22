@@ -40,6 +40,8 @@ squashfs-root
 .vscode/*
 !.vscode/extensions.json
 .idea
+.code/
+.opencode/
 .DS_Store
 Thumbs.db
 *.suo
@@ -47,3 +49,9 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Local artifacts
+MT6765_Android_scatter.txt
+mtk_force_fastboot.py
+openspec/config.yaml
+scatter/

@@ -36,6 +36,13 @@ pub enum FastbootRebootMode {
     Recovery,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FastbootSlot {
+    A,
+    B,
+}
+
 #[tauri::command]
 pub async fn fastboot_list_devices() -> Result<Vec<FastbootDevice>, AppError> {
     let devices = fastboot_nusb::devices()
@@ -61,7 +68,7 @@ pub async fn fastboot_getvar_all(
     app: AppHandle,
     device_id: String,
     operation_id: String,
-) -> Result<usize, AppError> {
+) -> Result<Vec<String>, AppError> {
     emit_operation_output(&app, &operation_id, "Fetching fastboot variables...", false);
 
     let info = match find_device_info(&device_id) {
@@ -97,14 +104,66 @@ pub async fn fastboot_getvar_all(
     let mut keys: Vec<_> = vars.keys().cloned().collect();
     keys.sort();
 
+    let mut lines = Vec::new();
     for key in keys {
         if let Some(value) = vars.get(&key) {
-            emit_operation_output(&app, &operation_id, &format!("{key}: {value}"), false);
+            let line = format!("{key}: {value}");
+            emit_operation_output(&app, &operation_id, &line, false);
+            lines.push(line);
         }
     }
 
     emit_operation_complete(&app, &operation_id, true, None);
-    Ok(vars.len())
+    Ok(lines)
+}
+
+#[tauri::command]
+pub async fn fastboot_getvar(
+    app: AppHandle,
+    device_id: String,
+    name: String,
+    operation_id: String,
+) -> Result<String, AppError> {
+    emit_operation_output(
+        &app,
+        &operation_id,
+        &format!("Fetching fastboot variable: {name}..."),
+        false,
+    );
+
+    let info = match find_device_info(&device_id) {
+        Ok(info) => info,
+        Err(err) => {
+            emit_operation_output(&app, &operation_id, &err.message(), true);
+            emit_operation_complete(&app, &operation_id, false, Some(err.message()));
+            return Err(err);
+        }
+    };
+    let mut fastboot = match open_fastboot(&info) {
+        Ok(fastboot) => fastboot,
+        Err(err) => {
+            emit_operation_output(&app, &operation_id, &err.message(), true);
+            emit_operation_complete(&app, &operation_id, false, Some(err.message()));
+            return Err(err);
+        }
+    };
+
+    let value = fastboot
+        .get_var(&name)
+        .await
+        .map_err(|err| AppError::command(format!("fastboot getvar failed: {err}")));
+    let value = match value {
+        Ok(value) => value,
+        Err(err) => {
+            emit_operation_output(&app, &operation_id, &err.message(), true);
+            emit_operation_complete(&app, &operation_id, false, Some(err.message()));
+            return Err(err);
+        }
+    };
+
+    emit_operation_output(&app, &operation_id, &format!("{name}: {value}"), false);
+    emit_operation_complete(&app, &operation_id, true, None);
+    Ok(value)
 }
 
 #[tauri::command]
@@ -262,6 +321,51 @@ pub async fn fastboot_flash(
 }
 
 #[tauri::command]
+pub async fn fastboot_erase(
+    app: AppHandle,
+    device_id: String,
+    partition: String,
+    operation_id: String,
+) -> Result<(), AppError> {
+    let info = match find_device_info(&device_id) {
+        Ok(info) => info,
+        Err(err) => {
+            emit_operation_output(&app, &operation_id, &err.message(), true);
+            emit_operation_complete(&app, &operation_id, false, Some(err.message()));
+            return Err(err);
+        }
+    };
+    let mut fastboot = match open_fastboot(&info) {
+        Ok(fastboot) => fastboot,
+        Err(err) => {
+            emit_operation_output(&app, &operation_id, &err.message(), true);
+            emit_operation_complete(&app, &operation_id, false, Some(err.message()));
+            return Err(err);
+        }
+    };
+
+    emit_operation_output(
+        &app,
+        &operation_id,
+        &format!("Erasing partition: {partition}"),
+        false,
+    );
+
+    let result = fastboot
+        .erase(&partition)
+        .await
+        .map_err(|err| AppError::command(format!("Fastboot erase failed: {err}")));
+    if let Err(err) = result {
+        emit_operation_output(&app, &operation_id, &err.message(), true);
+        emit_operation_complete(&app, &operation_id, false, Some(err.message()));
+        return Err(err);
+    }
+
+    emit_operation_complete(&app, &operation_id, true, None);
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn fastboot_reboot(
     app: AppHandle,
     device_id: String,
@@ -341,6 +445,101 @@ pub async fn fastboot_reboot(
                 return Err(err);
             }
         }
+    }
+
+    emit_operation_complete(&app, &operation_id, true, None);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn fastboot_set_active_slot(
+    app: AppHandle,
+    device_id: String,
+    slot: FastbootSlot,
+    operation_id: String,
+) -> Result<(), AppError> {
+    let info = match find_device_info(&device_id) {
+        Ok(info) => info,
+        Err(err) => {
+            emit_operation_output(&app, &operation_id, &err.message(), true);
+            emit_operation_complete(&app, &operation_id, false, Some(err.message()));
+            return Err(err);
+        }
+    };
+
+    let mut client = match open_raw_fastboot(&info) {
+        Ok(client) => client,
+        Err(err) => {
+            emit_operation_output(&app, &operation_id, &err.message(), true);
+            emit_operation_complete(&app, &operation_id, false, Some(err.message()));
+            return Err(err);
+        }
+    };
+
+    let slot_value = match slot {
+        FastbootSlot::A => "a",
+        FastbootSlot::B => "b",
+    };
+
+    emit_operation_output(
+        &app,
+        &operation_id,
+        &format!("Setting active slot to {slot_value}..."),
+        false,
+    );
+
+    let command = format!("set_active:{slot_value}");
+    let result = send_raw_command(&mut client, &command)
+        .await
+        .map_err(|err| AppError::command(format!("Fastboot set_active failed: {err}")));
+    if let Err(err) = result {
+        emit_operation_output(&app, &operation_id, &err.message(), true);
+        emit_operation_complete(&app, &operation_id, false, Some(err.message()));
+        return Err(err);
+    }
+
+    emit_operation_complete(&app, &operation_id, true, None);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn fastboot_reboot_fastbootd(
+    app: AppHandle,
+    device_id: String,
+    operation_id: String,
+) -> Result<(), AppError> {
+    let info = match find_device_info(&device_id) {
+        Ok(info) => info,
+        Err(err) => {
+            emit_operation_output(&app, &operation_id, &err.message(), true);
+            emit_operation_complete(&app, &operation_id, false, Some(err.message()));
+            return Err(err);
+        }
+    };
+
+    let mut client = match open_raw_fastboot(&info) {
+        Ok(client) => client,
+        Err(err) => {
+            emit_operation_output(&app, &operation_id, &err.message(), true);
+            emit_operation_complete(&app, &operation_id, false, Some(err.message()));
+            return Err(err);
+        }
+    };
+
+    emit_operation_output(
+        &app,
+        &operation_id,
+        "Rebooting to fastbootd...",
+        false,
+    );
+
+    let result = send_raw_command(&mut client, "reboot-fastboot")
+        .await
+        .map_err(map_fastbootd_error);
+    if let Err(err) = result {
+        emit_operation_output(&app, &operation_id, &err.message(), true);
+        emit_operation_complete(&app, &operation_id, false, Some(err.message()));
+        return Err(err);
     }
 
     emit_operation_complete(&app, &operation_id, true, None);
@@ -491,4 +690,16 @@ async fn send_raw_command(client: &mut RawFastbootClient, command: &str) -> Resu
             Err(err) => return Err(err.to_string()),
         }
     }
+}
+
+fn map_fastbootd_error(err: String) -> AppError {
+    let lower = err.to_lowercase();
+    if lower.contains("unknown command")
+        || lower.contains("not supported")
+        || lower.contains("unsupported")
+        || lower.contains("invalid command")
+    {
+        return AppError::command("Fastbootd reboot is not supported on this device");
+    }
+    AppError::command(format!("Fastboot reboot failed: {err}"))
 }
