@@ -14,9 +14,9 @@ export function FlashActionBar({
   onFlash,
 }: FlashActionBarProps) {
   return (
-    <div className="flex items-center justify-between p-4 bg-zinc-800 rounded-lg border border-zinc-700 flex-shrink-0">
-      <div className="text-sm text-zinc-400">
-        <span className="font-semibold text-zinc-300">{selectedCount}</span> partitions selected
+    <div className="flex items-center justify-between p-4 bg-[var(--surface-alt)] rounded-lg border border-[var(--border)] flex-shrink-0">
+      <div className="text-sm text-[var(--text-muted)]">
+        <span className="font-semibold text-[var(--text)]">{selectedCount}</span> partitions selected
         {selectedCount > 0 && (
           <span className="ml-2">({selectedWithImagesCount} with images)</span>
         )}
@@ -31,7 +31,7 @@ export function FlashActionBar({
               ? `${missingImagesCount} partition(s) missing image files`
               : 'Flash selected partitions'
         }
-        className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        className="px-6 py-2 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-foreground)] rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         Flash Selected
       </button>

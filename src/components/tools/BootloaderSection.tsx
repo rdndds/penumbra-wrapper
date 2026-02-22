@@ -16,25 +16,25 @@ export function BootloaderSection({
   onLock,
 }: BootloaderSectionProps) {
   return (
-    <section className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-6">
+    <section className="bg-[var(--surface-alt)] border border-[var(--border)] rounded-lg p-6">
       <div className="flex items-start gap-4 mb-4">
-        <div className="p-3 bg-amber-600/20 rounded-lg">
-          <Lock className="w-6 h-6 text-amber-400" />
+        <div className="p-3 bg-[var(--warning-soft)] rounded-lg">
+          <Lock className="w-6 h-6 text-[var(--warning)]" />
         </div>
         <div className="flex-1">
-          <h2 className="text-lg font-semibold text-zinc-200">Bootloader Management</h2>
-          <p className="text-sm text-zinc-400 mt-1">
-            Unlock or lock the device bootloader. <span className="text-amber-400 font-semibold">WARNING:</span> These operations may wipe all data!
+          <h2 className="text-lg font-semibold text-[var(--text)]">Bootloader Management</h2>
+          <p className="text-sm text-[var(--text-muted)] mt-1">
+            Unlock or lock the device bootloader. <span className="text-[var(--warning)] font-semibold">WARNING:</span> These operations may wipe all data!
           </p>
         </div>
       </div>
 
-      <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-4">
+      <div className="bg-[var(--danger-soft)] border border-[var(--danger)] rounded-lg p-4 mb-4">
         <div className="flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-zinc-300">
-            <p className="font-semibold text-red-400 mb-1">Destructive Operations!</p>
-            <ul className="list-disc list-inside space-y-1 text-zinc-400">
+          <AlertTriangle className="w-5 h-5 text-[var(--danger)] flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-[var(--text)]">
+            <p className="font-semibold text-[var(--danger)] mb-1">Destructive Operations!</p>
+            <ul className="list-disc list-inside space-y-1 text-[var(--text-muted)]">
               <li>Unlocking allows custom ROM installation but may void warranty</li>
               <li>Locking prevents custom modifications but restores security</li>
               <li>Both operations typically wipe all user data</li>
@@ -48,7 +48,7 @@ export function BootloaderSection({
         <button
           onClick={onUnlock}
           disabled={!isConnected || isSeccfgRunning || isSettingsLoading}
-          className="flex items-center justify-center gap-2 px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center justify-center gap-2 px-6 py-3 bg-[var(--warning)] hover:bg-[var(--warning-hover)] text-[var(--warning-foreground)] rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Unlock className="w-5 h-5" />
           {isSeccfgRunning ? 'Processing...' : 'Unlock Bootloader'}
@@ -57,7 +57,7 @@ export function BootloaderSection({
         <button
           onClick={onLock}
           disabled={!isConnected || isSeccfgRunning || isSettingsLoading}
-          className="flex items-center justify-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center justify-center gap-2 px-6 py-3 bg-[var(--danger)] hover:bg-[var(--danger-hover)] text-[var(--danger-foreground)] rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Lock className="w-5 h-5" />
           {isSeccfgRunning ? 'Processing...' : 'Lock Bootloader'}

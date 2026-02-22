@@ -87,23 +87,23 @@ export function ConfirmationModal({
     switch (variant) {
       case 'danger':
         return {
-          borderColor: 'border-red-500',
-          iconColor: 'text-red-400',
-          buttonBg: 'bg-red-600 hover:bg-red-700',
+          borderColor: 'border-[var(--danger)]',
+          iconColor: 'text-[var(--danger)]',
+          buttonBg: 'bg-[var(--danger)] hover:bg-[var(--danger-hover)]',
           icon: AlertTriangle,
         };
       case 'warning':
         return {
-          borderColor: 'border-amber-500',
-          iconColor: 'text-amber-400',
-          buttonBg: 'bg-amber-600 hover:bg-amber-700',
+          borderColor: 'border-[var(--warning)]',
+          iconColor: 'text-[var(--warning)]',
+          buttonBg: 'bg-[var(--warning)] hover:bg-[var(--warning-hover)]',
           icon: AlertCircle,
         };
       case 'info':
         return {
-          borderColor: 'border-blue-500',
-          iconColor: 'text-blue-400',
-          buttonBg: 'bg-blue-600 hover:bg-blue-700',
+          borderColor: 'border-[var(--primary)]',
+          iconColor: 'text-[var(--primary)]',
+          buttonBg: 'bg-[var(--primary)] hover:bg-[var(--primary-hover)]',
           icon: Info,
         };
     }
@@ -133,22 +133,22 @@ export function ConfirmationModal({
           isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
         }`}
       >
-        <div className={`bg-zinc-900 rounded-lg border-2 ${styles.borderColor} shadow-2xl overflow-hidden`}>
+        <div className={`bg-[var(--surface)] rounded-lg border-2 ${styles.borderColor} shadow-2xl overflow-hidden`}>
           {/* Header */}
-          <div className="flex items-start gap-3 p-5 border-b border-zinc-800">
+          <div className="flex items-start gap-3 p-5 border-b border-[var(--border)]">
             <Icon className={`w-6 h-6 ${styles.iconColor} flex-shrink-0 mt-0.5`} />
-            <h2 className="text-xl font-semibold text-zinc-100 flex-1">{title}</h2>
+            <h2 className="text-xl font-semibold text-[var(--text)] flex-1">{title}</h2>
             <button
               onClick={onClose}
               disabled={isLoading}
-              className="p-1 hover:bg-zinc-800 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1 hover:bg-[var(--surface-alt)] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <X className="w-5 h-5 text-zinc-400" />
+              <X className="w-5 h-5 text-[var(--text-muted)]" />
             </button>
           </div>
 
           {/* Content */}
-          <div className="p-5 text-zinc-300 text-sm leading-relaxed">
+          <div className="p-5 text-[var(--text)] text-sm leading-relaxed">
             {typeof message === 'string' ? (
               <p className="whitespace-pre-line">{message}</p>
             ) : (
@@ -157,11 +157,11 @@ export function ConfirmationModal({
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-end gap-3 p-5 border-t border-zinc-800 bg-zinc-900/50">
+          <div className="flex items-center justify-end gap-3 p-5 border-t border-[var(--border)] bg-[var(--surface)]">
             <button
               onClick={onClose}
               disabled={isLoading}
-              className="px-5 py-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-5 py-2 bg-[var(--surface-alt)] hover:bg-[var(--surface-hover)] text-[var(--text)] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {cancelText}
             </button>

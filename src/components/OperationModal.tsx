@@ -188,7 +188,7 @@ export const OperationModal = memo<OperationModalProps>(({
       >
         {/* Modal */}
         <div
-          className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-md shadow-2xl transition-all duration-200 relative"
+          className="bg-[var(--surface)] border border-[var(--border)] rounded-lg w-full max-w-md shadow-2xl transition-all duration-200 relative"
           onClick={(e) => e.stopPropagation()}
           style={{
             animation: isOpen ? 'modalEnter 200ms ease-out' : undefined,
@@ -196,21 +196,21 @@ export const OperationModal = memo<OperationModalProps>(({
         >
           {/* Overwrite Confirmation Overlay */}
           {showOverwriteConfirm && (
-            <div className="absolute inset-0 bg-zinc-900 flex flex-col items-center justify-center p-6 z-10 rounded-lg border-2 border-yellow-600">
+            <div className="absolute inset-0 bg-[var(--surface)] flex flex-col items-center justify-center p-6 z-10 rounded-lg border-2 border-yellow-600">
               <AlertTriangle className="w-12 h-12 text-yellow-500 mb-4" />
-              <h3 className="text-lg font-semibold text-zinc-100 mb-2 text-center">
+              <h3 className="text-lg font-semibold text-[var(--text)] mb-2 text-center">
                 File Already Exists
               </h3>
-              <p className="text-sm text-zinc-400 mb-6 text-center">
+              <p className="text-sm text-[var(--text-muted)] mb-6 text-center">
                 The output file already exists. Do you want to overwrite it?
               </p>
-              <p className="text-xs text-zinc-500 mb-6 text-center font-mono break-all max-w-full px-4">
+              <p className="text-xs text-[var(--text-subtle)] mb-6 text-center font-mono break-all max-w-full px-4">
                 {filePath}
               </p>
               <div className="flex gap-3 w-full">
                 <button
                   onClick={handleChooseDifferent}
-                  className="flex-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded transition-colors"
+                  className="flex-1 px-4 py-2 bg-[var(--surface-alt)] hover:bg-[var(--surface-hover)] text-[var(--text)] rounded transition-colors"
                 >
                   Choose Different
                 </button>
@@ -225,29 +225,29 @@ export const OperationModal = memo<OperationModalProps>(({
           )}
 
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-zinc-800">
-            <h2 className="text-lg font-semibold text-zinc-100">
+          <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
+            <h2 className="text-lg font-semibold text-[var(--text)]">
               {operation === 'write' ? 'Write' : 'Read'} Partition
             </h2>
             <button
               onClick={onClose}
               disabled={isExecuting}
-              className="p-1 hover:bg-zinc-800 rounded transition-colors disabled:opacity-50"
+              className="p-1 hover:bg-[var(--surface-alt)] rounded transition-colors disabled:opacity-50"
             >
-              <X className="w-5 h-5 text-zinc-400" />
+              <X className="w-5 h-5 text-[var(--text-muted)]" />
             </button>
           </div>
 
           {/* Content */}
           <div className="p-6 space-y-4">
             {/* Partition Info */}
-            <div className="p-3 bg-zinc-800/50 rounded-md border border-zinc-700/50">
-              <div className="text-xs text-zinc-500 mb-1">Partition</div>
-              <div className="font-mono text-sm text-zinc-200">
+            <div className="p-3 bg-[var(--surface-alt)] rounded-md border border-[var(--border)]">
+              <div className="text-xs text-[var(--text-subtle)] mb-1">Partition</div>
+              <div className="font-mono text-sm text-[var(--text)]">
                 {partition.name}
               </div>
               {partition.display_size && (
-                <div className="text-xs text-zinc-400 mt-1">
+                <div className="text-xs text-[var(--text-muted)] mt-1">
                   Size: {partition.display_size}
                 </div>
               )}
@@ -255,7 +255,7 @@ export const OperationModal = memo<OperationModalProps>(({
 
             {/* File Path */}
             <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-2">
+              <label className="block text-sm font-medium text-[var(--text)] mb-2">
                 {operation === 'write' ? 'Image File' : 'Output File'}
               </label>
               <div className="flex gap-2">
@@ -265,19 +265,19 @@ export const OperationModal = memo<OperationModalProps>(({
                   onChange={(e) => setFilePath(e.target.value)}
                   placeholder={operation === 'write' ? 'Select image file...' : 'Select output location...'}
                   disabled={isExecuting}
-                  className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-zinc-200 text-sm placeholder-zinc-500 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+                  className="flex-1 px-3 py-2 bg-[var(--surface-alt)] border border-[var(--border)] rounded text-[var(--text)] text-sm placeholder-[var(--text-subtle)] focus:outline-none focus:border-[var(--primary)] disabled:opacity-50"
                 />
                 <button
                   onClick={handleBrowse}
                   disabled={isExecuting}
-                  className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded transition-colors disabled:opacity-50"
+                  className="px-3 py-2 bg-[var(--surface-alt)] hover:bg-[var(--surface-hover)] border border-[var(--border)] rounded transition-colors disabled:opacity-50"
                   title="Browse"
                 >
-                  <FolderOpen className="w-4 h-4 text-zinc-400" />
+                  <FolderOpen className="w-4 h-4 text-[var(--text-muted)]" />
                 </button>
               </div>
               {filePath && (
-                <div className="mt-2 text-xs text-zinc-500 break-all">
+                <div className="mt-2 text-xs text-[var(--text-subtle)] break-all">
                   {getFilename(filePath)}
                 </div>
               )}
@@ -285,18 +285,18 @@ export const OperationModal = memo<OperationModalProps>(({
           </div>
 
           {/* Footer */}
-          <div className="flex justify-end gap-3 p-4 border-t border-zinc-800">
+          <div className="flex justify-end gap-3 p-4 border-t border-[var(--border)]">
             <button
               onClick={onClose}
               disabled={isExecuting}
-              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded transition-colors disabled:opacity-50"
+              className="px-4 py-2 bg-[var(--surface-alt)] hover:bg-[var(--surface-hover)] text-[var(--text)] rounded transition-colors disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               onClick={() => handleStart()}
               disabled={!canStart}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-[var(--primary-foreground)] font-semibold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isExecuting ? 'Starting...' : 'Start'}
             </button>

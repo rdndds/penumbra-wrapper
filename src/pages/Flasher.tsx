@@ -137,7 +137,7 @@ export function Flasher() {
   const canFlash = selectedCount > 0 && missingImagesCount === 0;
 
   return (
-    <div className="h-screen bg-zinc-900 text-zinc-100 flex flex-col">
+    <div className="h-screen bg-[var(--bg)] text-[var(--text)] flex flex-col">
       <FlasherHeader
         daPath={daPath}
         isConnecting={isConnecting}
@@ -151,11 +151,11 @@ export function Flasher() {
       <main className="flex-1 p-6 flex flex-col overflow-hidden">
         {!scatterFile ? (
           <div className="flex flex-col items-center justify-center flex-1 text-center">
-            <Package className="w-20 h-20 text-zinc-700 mb-4" />
-            <h2 className="text-xl font-semibold text-zinc-300 mb-2">
+            <Package className="w-20 h-20 text-[var(--text-subtle)] mb-4" />
+            <h2 className="text-xl font-semibold text-[var(--text)] mb-2">
               No Scatter File Loaded
             </h2>
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-[var(--text-subtle)]">
               Load a scatter file (.txt or .xml) to begin batch flashing
             </p>
           </div>

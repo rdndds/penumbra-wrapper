@@ -50,7 +50,7 @@ export class ErrorHandler {
     const parsedError = parseTauriError(error);
     
     // Build the display message
-    let errorMessage = customMessage || parsedError.message;
+    const errorMessage = customMessage || parsedError.message;
     
     // Add suggestion if enabled and available
     const suggestion = showSuggestion ? (parsedError.suggestion || getErrorSuggestion(error)) : undefined;

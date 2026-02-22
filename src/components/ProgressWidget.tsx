@@ -53,14 +53,14 @@ export const ProgressWidget = memo<ProgressWidgetProps>(({
   const operationText = operationType === 'read' ? 'Reading' : 'Writing';
 
   return (
-    <div className="p-4 bg-zinc-800/70 border-t border-b border-zinc-700/50">
+    <div className="p-4 bg-[var(--surface-alt)] border-t border-b border-[var(--border)]">
       {/* Header: Operation + Partition Info */}
       <div className="flex items-center justify-between mb-3">
         <div>
-          <div className="text-sm font-semibold text-zinc-200">
+          <div className="text-sm font-semibold text-[var(--text)]">
             {operationText} '{partitionName}'
             {partitionSize && (
-              <span className="ml-1.5 text-xs text-zinc-400 font-normal">
+              <span className="ml-1.5 text-xs text-[var(--text-muted)] font-normal">
                 ({partitionSize})
               </span>
             )}
@@ -70,10 +70,10 @@ export const ProgressWidget = memo<ProgressWidgetProps>(({
 
       {/* Spinner + Status */}
       <div className="flex items-center gap-3 mb-3">
-        <span className="text-2xl text-blue-400 animate-pulse">
+        <span className="text-2xl text-[var(--primary)] animate-pulse">
           {SPINNER_FRAMES[spinnerIndex]}
         </span>
-        <span className="text-sm text-zinc-400">
+        <span className="text-sm text-[var(--text-muted)]">
           {operationType === 'read' ? 'Uploading from device...' : 'Downloading to device...'}
         </span>
       </div>
@@ -81,9 +81,9 @@ export const ProgressWidget = memo<ProgressWidgetProps>(({
       {/* Elapsed Timer */}
       <div className="flex items-center gap-2 text-xs">
         <div className="flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-          <span className="text-zinc-500 font-medium">Elapsed:</span>
-          <span className="font-mono text-zinc-300 font-semibold">{elapsedTime}</span>
+          <div className="w-1.5 h-1.5 bg-[var(--success)] rounded-full animate-pulse" />
+          <span className="text-[var(--text-subtle)] font-medium">Elapsed:</span>
+          <span className="font-mono text-[var(--text)] font-semibold">{elapsedTime}</span>
         </div>
       </div>
     </div>

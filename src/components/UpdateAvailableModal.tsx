@@ -66,20 +66,20 @@ export function UpdateAvailableModal({
     switch (status) {
       case 'downloading':
       case 'fetching':
-        return 'text-blue-400';
+        return 'text-[var(--primary)]';
       case 'verifying':
-        return 'text-yellow-400';
+        return 'text-[var(--warning)]';
       case 'completed':
-        return 'text-green-400';
+        return 'text-[var(--success)]';
       case 'failed':
-        return 'text-red-400';
+        return 'text-[var(--danger)]';
       case 'retrying':
       case 'fallback_blocking':
       case 'fallback_curl':
       case 'fallback_powershell':
-        return 'text-amber-400';
+        return 'text-[var(--warning)]';
       default:
-        return 'text-zinc-400';
+        return 'text-[var(--text-muted)]';
     }
   };
 
@@ -112,34 +112,34 @@ export function UpdateAvailableModal({
           isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
         }`}
       >
-        <div className="bg-zinc-900 rounded-lg border-2 border-blue-500 shadow-2xl overflow-hidden">
+        <div className="bg-[var(--surface)] rounded-lg border-2 border-[var(--primary)] shadow-2xl overflow-hidden">
           {/* Header */}
-          <div className="flex items-start gap-3 p-5 border-b border-zinc-800">
-            <Download className="w-6 h-6 text-blue-400 flex-shrink-0 mt-0.5" />
-            <h2 className="text-xl font-semibold text-zinc-100 flex-1">{titleText}</h2>
+          <div className="flex items-start gap-3 p-5 border-b border-[var(--border)]">
+            <Download className="w-6 h-6 text-[var(--primary)] flex-shrink-0 mt-0.5" />
+            <h2 className="text-xl font-semibold text-[var(--text)] flex-1">{titleText}</h2>
             <button
               onClick={onClose}
               disabled={isDownloading}
-              className="p-1 hover:bg-zinc-800 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1 hover:bg-[var(--surface-alt)] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <X className="w-5 h-5 text-zinc-400" />
+              <X className="w-5 h-5 text-[var(--text-muted)]" />
             </button>
           </div>
 
           {/* Content */}
-          <div className="p-5 text-zinc-300 space-y-4">
-            <p className="text-sm text-zinc-400">{messageText}</p>
+          <div className="p-5 text-[var(--text)] space-y-4">
+            <p className="text-sm text-[var(--text-muted)]">{messageText}</p>
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-zinc-400">Installed:</span>
+                <span className="text-[var(--text-muted)]">Installed:</span>
                 <span className="font-mono text-sm">
                   {isFirstInstall ? 'Not installed' : updateInfo.installed_version || 'Unknown'}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-zinc-400">Latest:</span>
-                <span className="font-mono text-sm text-blue-400">
+                <span className="text-[var(--text-muted)]">Latest:</span>
+                <span className="font-mono text-sm text-[var(--primary)]">
                   {updateInfo.latest_version || 'Unknown'}
                 </span>
               </div>
@@ -147,8 +147,8 @@ export function UpdateAvailableModal({
 
             {updateInfo.installed_path && (
               <div className="text-sm">
-                <span className="text-zinc-400">Install location:</span>
-                <div className="mt-1 font-mono text-xs bg-zinc-800 p-2 rounded overflow-x-auto">
+                <span className="text-[var(--text-muted)]">Install location:</span>
+                <div className="mt-1 font-mono text-xs bg-[var(--surface-alt)] p-2 rounded overflow-x-auto">
                   {updateInfo.installed_path}
                 </div>
               </div>
@@ -156,7 +156,7 @@ export function UpdateAvailableModal({
 
             {/* Download Progress */}
             {isDownloading && downloadProgress && (
-              <div className="space-y-3 p-4 bg-zinc-800/50 rounded-lg border border-zinc-700">
+              <div className="space-y-3 p-4 bg-[var(--surface-alt)] rounded-lg border border-[var(--border)]">
                 {/* Status */}
                 <div className="flex items-center justify-between">
                   <div className={`flex items-center gap-2 text-sm font-medium ${getStatusColor(downloadProgress.status)}`}>
@@ -164,7 +164,7 @@ export function UpdateAvailableModal({
                     <span>{downloadProgress.message}</span>
                   </div>
                   {downloadProgress.attempt > 1 && (
-                    <span className="text-xs text-zinc-500">
+                    <span className="text-xs text-[var(--text-subtle)]">
                       Attempt {downloadProgress.attempt}/{downloadProgress.max_attempts}
                     </span>
                   )}
@@ -172,16 +172,16 @@ export function UpdateAvailableModal({
 
                 {/* Progress Bar */}
                 <div className="relative">
-                  <div className="h-2 bg-zinc-700 rounded-full overflow-hidden">
+                  <div className="h-2 bg-[var(--surface-hover)] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-blue-500 transition-all duration-300 ease-out"
+                      className="h-full bg-[var(--primary)] transition-all duration-300 ease-out"
                       style={{ width: `${downloadProgress.percentage}%` }}
                     />
                   </div>
                 </div>
 
                 {/* Progress Stats */}
-                <div className="flex items-center justify-between text-xs text-zinc-500">
+                <div className="flex items-center justify-between text-xs text-[var(--text-subtle)]">
                   <span>
                     {downloadProgress.total_bytes > 0 
                       ? `${formatBytes(downloadProgress.bytes_downloaded)} / ${formatBytes(downloadProgress.total_bytes)}`
@@ -198,18 +198,18 @@ export function UpdateAvailableModal({
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-end gap-3 p-5 border-t border-zinc-800 bg-zinc-900/50">
+          <div className="flex items-center justify-end gap-3 p-5 border-t border-[var(--border)] bg-[var(--surface)]">
             <button
               onClick={onClose}
               disabled={isDownloading}
-              className="px-5 py-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-5 py-2 bg-[var(--surface-alt)] hover:bg-[var(--surface-hover)] text-[var(--text)] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Later
             </button>
             <button
               onClick={onDownload}
               disabled={isDownloading || !updateInfo.supported}
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-5 py-2 bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-[var(--primary-foreground)] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <Download className="w-4 h-4" />
               {isDownloading ? 'Downloading...' : primaryActionText}

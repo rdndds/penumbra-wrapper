@@ -70,16 +70,16 @@ function AppContent() {
 
   return (
     <BrowserRouter>
-      {isSettingsLoading && (
-        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[200] px-3 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-200 border border-zinc-700 rounded-full shadow">
-          Loading settings...
-        </div>
-      )}
-      {settingsError && (
-        <div className="fixed top-3 right-3 z-[200] px-3 py-1.5 text-xs font-medium bg-red-900/80 text-red-100 border border-red-700 rounded shadow">
-          Settings load failed: {settingsError}
-        </div>
-      )}
+        {isSettingsLoading && (
+          <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[200] px-3 py-1.5 text-xs font-medium bg-[var(--surface-alt)] text-[var(--text)] border border-[var(--border)] rounded-full shadow">
+            Loading settings...
+          </div>
+        )}
+        {settingsError && (
+          <div className="fixed top-3 right-3 z-[200] px-3 py-1.5 text-xs font-medium bg-[var(--danger-soft)] text-[var(--danger)] border border-[var(--danger)] rounded shadow">
+            Settings load failed: {settingsError}
+          </div>
+        )}
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />

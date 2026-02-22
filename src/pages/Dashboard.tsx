@@ -368,7 +368,7 @@ export function Dashboard() {
   };
 
   return (
-    <div className="h-screen bg-zinc-900 text-zinc-100 flex flex-col">
+    <div className="h-screen bg-[var(--bg)] text-[var(--text)] flex flex-col">
       <DashboardHeader
         daPath={daPath}
         preloaderPath={preloaderPath}

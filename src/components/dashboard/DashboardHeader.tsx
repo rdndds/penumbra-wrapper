@@ -29,13 +29,13 @@ export function DashboardHeader({
   onCheckUpdates,
 }: DashboardHeaderProps) {
   return (
-    <header className="border-b border-zinc-800 p-4 bg-zinc-900/95 backdrop-blur-sm flex-shrink-0">
+    <header className="border-b border-[var(--border)] p-4 bg-[var(--surface)] backdrop-blur-sm flex-shrink-0">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         {onCheckUpdates && (
           <button
             onClick={onCheckUpdates}
             disabled={isCheckingUpdate}
-            className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 border border-blue-500 rounded transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-3 py-1.5 bg-[var(--primary)] hover:bg-[var(--primary-hover)] border border-[var(--primary)] rounded transition-colors text-sm text-[var(--primary-foreground)] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Download className="w-4 h-4" />
             {isCheckingUpdate ? 'Checking...' : 'Update Antumbra'}
@@ -44,11 +44,11 @@ export function DashboardHeader({
 
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
-            <label className="text-sm text-zinc-400 font-medium">DA:</label>
+            <label className="text-sm text-[var(--text-muted)] font-medium">DA:</label>
             <button
               onClick={onSelectDa}
               disabled={isSettingsLoading}
-              className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-3 py-1.5 bg-[var(--surface-alt)] hover:bg-[var(--surface-hover)] border border-[var(--border)] rounded transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FolderOpen className="w-4 h-4" />
               {daPath ? getBasename(daPath) : 'Select DA'}
@@ -56,11 +56,11 @@ export function DashboardHeader({
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="text-sm text-zinc-400 font-medium">Preloader:</label>
+            <label className="text-sm text-[var(--text-muted)] font-medium">Preloader:</label>
             <button
               onClick={onSelectPreloader}
               disabled={isSettingsLoading}
-              className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-3 py-1.5 bg-[var(--surface-alt)] hover:bg-[var(--surface-hover)] border border-[var(--border)] rounded transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FolderOpen className="w-4 h-4" />
               {preloaderPath ? getBasename(preloaderPath) : 'Optional'}
@@ -69,7 +69,7 @@ export function DashboardHeader({
               <button
                 onClick={onClearPreloader}
                 disabled={isSettingsLoading}
-                className="px-2 py-1.5 bg-red-600 hover:bg-red-700 rounded transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-2 py-1.5 bg-[var(--danger)] hover:bg-[var(--danger-hover)] rounded transition-colors text-sm text-[var(--danger-foreground)] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 ✕
               </button>
@@ -77,11 +77,11 @@ export function DashboardHeader({
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="text-sm text-zinc-400 font-medium">Output:</label>
+            <label className="text-sm text-[var(--text-muted)] font-medium">Output:</label>
             <button
               onClick={onSelectOutput}
               disabled={isSettingsLoading}
-              className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-3 py-1.5 bg-[var(--surface-alt)] hover:bg-[var(--surface-hover)] border border-[var(--border)] rounded transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FolderOpen className="w-4 h-4" />
               {defaultOutputPath ? getBasename(defaultOutputPath) : 'Select Output'}
@@ -90,7 +90,7 @@ export function DashboardHeader({
               <button
                 onClick={onClearOutput}
                 disabled={isSettingsLoading}
-                className="px-2 py-1.5 bg-red-600 hover:bg-red-700 rounded transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-2 py-1.5 bg-[var(--danger)] hover:bg-[var(--danger-hover)] rounded transition-colors text-sm text-[var(--danger-foreground)] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 ✕
               </button>

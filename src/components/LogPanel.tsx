@@ -116,17 +116,17 @@ export function LogPanel() {
   if (!isLogPanelOpen) return null;
 
   const getLevelColor = (level: string) => {
-    if (!level) return 'text-zinc-300';
+    if (!level) return 'text-[var(--text-muted)]';
     
     switch (level.toLowerCase()) {
       case 'error':
-        return 'text-red-400';
+        return 'text-[var(--danger)]';
       case 'warning':
-        return 'text-yellow-400';
+        return 'text-[var(--warning)]';
       case 'success':
-        return 'text-green-400';
+        return 'text-[var(--success)]';
       default:
-        return 'text-zinc-300';
+        return 'text-[var(--text-muted)]';
     }
   };
 
@@ -141,30 +141,30 @@ export function LogPanel() {
       {/* Slide-out panel */}
       <div
         ref={panelRef}
-        className={`fixed top-0 right-0 h-full bg-zinc-900 border-l border-zinc-800 z-50 flex flex-col shadow-2xl ${isDragging ? '' : 'transition-all duration-300 ease-out'}`}
+        className={`fixed top-0 right-0 h-full bg-[var(--surface)] border-l border-[var(--border)] z-50 flex flex-col shadow-2xl ${isDragging ? '' : 'transition-all duration-300 ease-out'}`}
         style={{ width: `${logPanelWidth}px` }}
       >
         {/* Resize Handle - Small centered grip */}
         <div
-          className="absolute left-0 top-1/2 -translate-y-1/2 h-16 w-3 cursor-col-resize bg-blue-500/50 hover:bg-blue-500 rounded-r-md transition-colors flex items-center justify-center"
+          className="absolute left-0 top-1/2 -translate-y-1/2 h-16 w-3 cursor-col-resize bg-[var(--primary-soft)] hover:bg-[var(--primary)] rounded-r-md transition-colors flex items-center justify-center"
           onMouseDown={() => setIsDragging(true)}
           title="Drag to resize"
         >
           {/* Grip indicator */}
-          <div className="w-0.5 h-8 bg-blue-300/50 rounded-full" />
+          <div className="w-0.5 h-8 bg-[var(--primary-foreground)]/60 rounded-full" />
         </div>
 
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-zinc-800 ml-2">
+        <div className="flex items-center justify-between p-4 border-b border-[var(--border)] ml-2">
           <div className="flex items-center gap-2">
-            <Terminal className="w-5 h-5 text-blue-400" />
-            <h2 className="text-lg font-semibold text-zinc-100">
+            <Terminal className="w-5 h-5 text-[var(--primary)]" />
+            <h2 className="text-lg font-semibold text-[var(--text)]">
               Operation Logs
             </h2>
             {isStreaming && (
-              <div className="flex items-center gap-1.5 px-2 py-0.5 bg-green-500/20 rounded-full border border-green-500/50">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                <span className="text-xs text-green-400 font-medium">Live</span>
+              <div className="flex items-center gap-1.5 px-2 py-0.5 bg-[var(--success-soft)] rounded-full border border-[var(--success)]">
+                <div className="w-2 h-2 bg-[var(--success)] rounded-full animate-pulse" />
+                <span className="text-xs text-[var(--success)] font-medium">Live</span>
               </div>
             )}
           </div>
@@ -172,16 +172,16 @@ export function LogPanel() {
             <button
               onClick={handleCopyLogs}
               disabled={logs.length === 0}
-              className="p-1 hover:bg-zinc-800 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1 hover:bg-[var(--surface-alt)] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               title="Copy logs"
             >
-              <Copy className="w-5 h-5 text-zinc-400" />
+              <Copy className="w-5 h-5 text-[var(--text-muted)]" />
             </button>
             <button
               onClick={closeLogPanel}
-              className="p-1 hover:bg-zinc-800 rounded transition-colors"
+              className="p-1 hover:bg-[var(--surface-alt)] rounded transition-colors"
             >
-              <X className="w-5 h-5 text-zinc-400" />
+              <X className="w-5 h-5 text-[var(--text-muted)]" />
             </button>
           </div>
         </div>
@@ -198,19 +198,19 @@ export function LogPanel() {
         {/* Logs */}
         <div className="flex-1 overflow-y-auto p-4 font-mono text-xs space-y-1 ml-2">
           {logs.length === 0 ? (
-            <div className="text-center text-zinc-500 mt-8">
+            <div className="text-center text-[var(--text-subtle)] mt-8">
               No logs yet
             </div>
           ) : (
             logs.map((log) => (
               <div key={log.id || log.timestamp} className="flex gap-2">
-                <span className="text-zinc-600 shrink-0">
+                <span className="text-[var(--text-subtle)] shrink-0">
                   {new Date(log.timestamp).toLocaleTimeString()}
                 </span>
                 <span className={getLevelColor(log.level)}>
                   [{log.level.toUpperCase()}]
                 </span>
-                <span className="text-zinc-300 break-all">{log.message}</span>
+                <span className="text-[var(--text)] break-all">{log.message}</span>
               </div>
             ))
           )}

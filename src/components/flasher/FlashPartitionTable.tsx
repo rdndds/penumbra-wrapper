@@ -19,14 +19,14 @@ export function FlashPartitionTable({
   onSelectImage,
 }: FlashPartitionTableProps) {
   return (
-    <div className="flex-1 bg-zinc-800/50 border border-zinc-700 rounded-lg overflow-hidden flex flex-col mb-4">
-      <div className="grid grid-cols-[auto_2fr_1fr_1fr_1.5fr_2fr] gap-4 px-4 py-3 bg-zinc-800 border-b border-zinc-700 sticky top-0 z-10">
-        <div className="text-sm font-semibold text-zinc-300">Select</div>
-        <div className="text-sm font-semibold text-zinc-300">Partition</div>
-        <div className="text-sm font-semibold text-zinc-300">Size</div>
-        <div className="text-sm font-semibold text-zinc-300">Region</div>
-        <div className="text-sm font-semibold text-zinc-300">Type</div>
-        <div className="text-sm font-semibold text-zinc-300">Image File</div>
+    <div className="flex-1 bg-[var(--surface-alt)] border border-[var(--border)] rounded-lg overflow-hidden flex flex-col mb-4">
+      <div className="grid grid-cols-[auto_2fr_1fr_1fr_1.5fr_2fr] gap-4 px-4 py-3 bg-[var(--surface)] border-b border-[var(--border)] sticky top-0 z-10">
+        <div className="text-sm font-semibold text-[var(--text)]">Select</div>
+        <div className="text-sm font-semibold text-[var(--text)]">Partition</div>
+        <div className="text-sm font-semibold text-[var(--text)]">Size</div>
+        <div className="text-sm font-semibold text-[var(--text)]">Region</div>
+        <div className="text-sm font-semibold text-[var(--text)]">Type</div>
+        <div className="text-sm font-semibold text-[var(--text)]">Image File</div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -37,14 +37,14 @@ export function FlashPartitionTable({
           return (
             <div
               key={partition.partition_name}
-              className={`grid grid-cols-[auto_2fr_1fr_1fr_1.5fr_2fr] gap-4 px-4 py-3 border-b border-zinc-700/50 hover:bg-zinc-700/30 transition-colors ${
-                isSelected ? 'bg-purple-500/10' : ''
+              className={`grid grid-cols-[auto_2fr_1fr_1fr_1.5fr_2fr] gap-4 px-4 py-3 border-b border-[var(--border)] hover:bg-[var(--surface-hover)] transition-colors ${
+                isSelected ? 'bg-[var(--accent-soft)]' : ''
               }`}
             >
               <div className="flex items-center">
                 <button
                   onClick={() => onTogglePartition(partition.partition_name)}
-                  className="text-zinc-400 hover:text-purple-400 transition-colors"
+                  className="text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
                 >
                   {isSelected ? (
                     <CheckSquare className="w-5 h-5" />
@@ -57,14 +57,14 @@ export function FlashPartitionTable({
               <div className="flex items-center min-w-0">
                 <div className="flex flex-col min-w-0">
                   <span
-                    className="font-mono text-sm text-zinc-200 truncate"
+                    className="font-mono text-sm text-[var(--text)] truncate"
                     title={partition.partition_name}
                   >
                     {partition.partition_name}
                   </span>
                   {partition.file_name && (
                     <span
-                      className="text-xs text-zinc-500 font-mono truncate"
+                      className="text-xs text-[var(--text-subtle)] font-mono truncate"
                       title={partition.file_name}
                     >
                       {partition.file_name}
@@ -74,21 +74,21 @@ export function FlashPartitionTable({
               </div>
 
               <div
-                className="flex items-center font-mono text-sm text-zinc-300 truncate"
+                className="flex items-center font-mono text-sm text-[var(--text)] truncate"
                 title={partition.partition_size}
               >
                 {formatHexSize(partition.partition_size)}
               </div>
 
               <div
-                className="flex items-center font-mono text-sm text-zinc-400 truncate"
+                className="flex items-center font-mono text-sm text-[var(--text-muted)] truncate"
                 title={partition.region}
               >
                 {partition.region}
               </div>
 
               <div
-                className="flex items-center font-mono text-xs text-zinc-500 truncate"
+                className="flex items-center font-mono text-xs text-[var(--text-subtle)] truncate"
                 title={partition.operation_type}
               >
                 {partition.operation_type}
@@ -97,12 +97,12 @@ export function FlashPartitionTable({
               <div className="flex items-center min-w-0">
                 {imageFile ? (
                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <span className="text-xs text-green-400 truncate font-mono" title={imageFile}>
+                    <span className="text-xs text-[var(--success)] truncate font-mono" title={imageFile}>
                       {getBasename(imageFile)}
                     </span>
                     <button
                       onClick={() => onSelectImage(partition.partition_name)}
-                      className="flex-shrink-0 p-1 text-zinc-400 hover:text-purple-400 transition-colors"
+                      className="flex-shrink-0 p-1 text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
                       title="Change image file"
                     >
                       <FolderOpen className="w-4 h-4" />
@@ -111,7 +111,7 @@ export function FlashPartitionTable({
                 ) : (
                   <button
                     onClick={() => onSelectImage(partition.partition_name)}
-                    className="flex items-center gap-1.5 px-2 py-1 text-xs bg-zinc-700 hover:bg-zinc-600 rounded transition-colors"
+                    className="flex items-center gap-1.5 px-2 py-1 text-xs bg-[var(--surface-alt)] hover:bg-[var(--surface-hover)] rounded transition-colors border border-[var(--border)]"
                   >
                     <FolderOpen className="w-3.5 h-3.5" />
                     Select File
