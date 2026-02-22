@@ -7,6 +7,7 @@ pub mod device;
 pub mod diagnostics;
 pub mod erase;
 pub mod fastboot;
+pub mod fastboot_tools;
 pub mod flash;
 pub mod format;
 pub mod read;

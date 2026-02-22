@@ -94,6 +94,10 @@ async fn main() {
             commands::diagnostics::get_last_antumbra_command,
             commands::diagnostics::check_windows_environment,
             commands::fastboot::force_fastboot,
+            commands::fastboot_tools::fastboot_list_devices,
+            commands::fastboot_tools::fastboot_getvar_all,
+            commands::fastboot_tools::fastboot_flash,
+            commands::fastboot_tools::fastboot_reboot,
         ])
         .setup(|_app| {
             // Initialize services on startup

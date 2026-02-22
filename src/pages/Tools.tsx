@@ -10,13 +10,16 @@ import { DialogType } from '../services/dialogs/fileDialogService';
 import { PartitionApi } from '../services/api/partitionApi';
 import { DeviceApi } from '../services/api/deviceApi';
 import { FastbootApi } from '../services/api/fastbootApi';
+import { FastbootToolsApi } from '../services/api/fastbootToolsApi';
 import { executeOperation } from '../services/operations/executeOperation';
 import { ToolsHeader } from '../components/tools/ToolsHeader';
 import { ConnectionWarning } from '../components/tools/ConnectionWarning';
 import { ReadAllSection } from '../components/tools/ReadAllSection';
 import { BootloaderSection } from '../components/tools/BootloaderSection';
 import { FastbootSection } from '../components/tools/FastbootSection';
+import { FastbootToolsSection } from '../components/tools/FastbootToolsSection';
 import type { FastbootStatusEvent } from '../types';
+import type { FastbootDevice, FastbootRebootMode } from '../types';
 import toast from 'react-hot-toast';
 
 export function Tools() {
@@ -29,6 +32,14 @@ export function Tools() {
   const [isReadAllRunning, setIsReadAllRunning] = useState(false);
   const [isSeccfgRunning, setIsSeccfgRunning] = useState(false);
   const [isFastbootRunning, setIsFastbootRunning] = useState(false);
+  const [isFastbootRefreshing, setIsFastbootRefreshing] = useState(false);
+  const [isFastbootGetvarRunning, setIsFastbootGetvarRunning] = useState(false);
+  const [isFastbootFlashRunning, setIsFastbootFlashRunning] = useState(false);
+  const [isFastbootRebootRunning, setIsFastbootRebootRunning] = useState(false);
+  const [fastbootDevices, setFastbootDevices] = useState<FastbootDevice[]>([]);
+  const [selectedFastbootDeviceId, setSelectedFastbootDeviceId] = useState('');
+  const [fastbootPartition, setFastbootPartition] = useState('');
+  const [fastbootImagePath, setFastbootImagePath] = useState<string | null>(null);
   const [skipPartitions, setSkipPartitions] = useState<Set<string>>(new Set());
   const fastbootToastId = useRef<string | undefined>(undefined);
 
@@ -66,6 +77,25 @@ export function Tools() {
         unlisten();
       }
     };
+  }, []);
+
+  useEffect(() => {
+    const loadDevices = async () => {
+      setIsFastbootRefreshing(true);
+      try {
+        const devices = await FastbootToolsApi.listDevices();
+        setFastbootDevices(devices);
+        setSelectedFastbootDeviceId((current) =>
+          devices.some((device) => device.id === current) ? current : ''
+        );
+      } catch {
+        toast.error('Failed to list fastboot devices');
+      } finally {
+        setIsFastbootRefreshing(false);
+      }
+    };
+
+    loadDevices();
   }, []);
 
   const handleSelectAllSkip = () => {
@@ -237,6 +267,105 @@ export function Tools() {
     }
   };
 
+  const handleRefreshFastbootDevices = async () => {
+    setIsFastbootRefreshing(true);
+    try {
+      const devices = await FastbootToolsApi.listDevices();
+      setFastbootDevices(devices);
+      if (devices.length === 0) {
+        setSelectedFastbootDeviceId('');
+        toast.error('No fastboot devices detected');
+      }
+    } catch {
+      toast.error('Failed to list fastboot devices');
+    } finally {
+      setIsFastbootRefreshing(false);
+    }
+  };
+
+  const ensureFastbootDevice = () => {
+    if (!selectedFastbootDeviceId) {
+      toast.error('Select a fastboot device first');
+      return false;
+    }
+    return true;
+  };
+
+  const handleGetvarAll = async () => {
+    if (!ensureFastbootDevice()) return;
+    if (isFastbootGetvarRunning) return;
+
+    setIsFastbootGetvarRunning(true);
+    try {
+      await executeOperation({
+        operation: 'Fastboot getvar all',
+        type: 'read',
+        partitionName: 'fastboot',
+        partitionSize: 'vars',
+        successMessage: 'Fastboot variables fetched',
+        run: (operationId) =>
+          FastbootToolsApi.getvarAll(selectedFastbootDeviceId, operationId).then(() => undefined),
+      });
+    } finally {
+      setIsFastbootGetvarRunning(false);
+    }
+  };
+
+  const handleSelectFastbootImage = async () => {
+    const imagePath = await selectFile(DialogType.IMAGE_FILE);
+    if (!imagePath) return;
+    setFastbootImagePath(imagePath);
+  };
+
+  const handleFastbootFlash = async () => {
+    if (!ensureFastbootDevice()) return;
+    if (!fastbootPartition.trim() || !fastbootImagePath) {
+      toast.error('Select a partition and image file first');
+      return;
+    }
+    if (isFastbootFlashRunning) return;
+
+    setIsFastbootFlashRunning(true);
+    try {
+      await executeOperation({
+        operation: `Fastboot flash ${fastbootPartition}`,
+        type: 'write',
+        partitionName: fastbootPartition,
+        partitionSize: 'image',
+        successMessage: `Flashed ${fastbootPartition} successfully`,
+        run: (operationId) =>
+          FastbootToolsApi.flash(
+            selectedFastbootDeviceId,
+            fastbootPartition.trim(),
+            fastbootImagePath,
+            operationId
+          ),
+      });
+    } finally {
+      setIsFastbootFlashRunning(false);
+    }
+  };
+
+  const handleFastbootReboot = async (mode: FastbootRebootMode) => {
+    if (!ensureFastbootDevice()) return;
+    if (isFastbootRebootRunning) return;
+
+    setIsFastbootRebootRunning(true);
+    try {
+      await executeOperation({
+        operation: `Fastboot reboot (${mode})`,
+        type: 'write',
+        partitionName: 'fastboot',
+        partitionSize: mode,
+        successMessage: `Rebooted to ${mode}`,
+        run: (operationId) =>
+          FastbootToolsApi.reboot(selectedFastbootDeviceId, mode, operationId),
+      });
+    } finally {
+      setIsFastbootRebootRunning(false);
+    }
+  };
+
   const backupCount = partitions.length - skipPartitions.size;
 
   return (
@@ -270,6 +399,24 @@ export function Tools() {
         <FastbootSection
           isRunning={isFastbootRunning}
           onForceFastboot={handleForceFastboot}
+        />
+
+        <FastbootToolsSection
+          devices={fastbootDevices}
+          selectedDeviceId={selectedFastbootDeviceId}
+          isRefreshing={isFastbootRefreshing}
+          isGetvarRunning={isFastbootGetvarRunning}
+          isFlashRunning={isFastbootFlashRunning}
+          isRebootRunning={isFastbootRebootRunning}
+          flashImagePath={fastbootImagePath}
+          flashPartition={fastbootPartition}
+          onSelectDevice={setSelectedFastbootDeviceId}
+          onRefresh={handleRefreshFastbootDevices}
+          onGetvarAll={handleGetvarAll}
+          onSelectFlashImage={handleSelectFastbootImage}
+          onFlashPartitionChange={setFastbootPartition}
+          onFlash={handleFastbootFlash}
+          onReboot={handleFastbootReboot}
         />
 
       </main>

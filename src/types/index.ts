@@ -80,6 +80,17 @@ export interface FastbootResult {
   message: string;
 }
 
+export interface FastbootDevice {
+  id: string;
+  vendorId: number;
+  productId: number;
+  manufacturer?: string | null;
+  product?: string | null;
+  serialNumber?: string | null;
+}
+
+export type FastbootRebootMode = 'normal' | 'bootloader' | 'recovery';
+
 export type OperationType = 'read' | 'write' | null;
 
 // Windows diagnostics types
