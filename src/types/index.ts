@@ -120,6 +120,7 @@ export interface AdbStatResult {
   file_perm: number;
   file_size: number;
   mod_time: number;
+  source: 'adb' | 'shell';
 }
 
 export type AdbRebootMode = 'normal' | 'bootloader' | 'recovery' | 'fastboot';

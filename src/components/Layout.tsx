@@ -4,7 +4,7 @@
 */
 
 import { Outlet, NavLink } from 'react-router-dom';
-import { Terminal, Grid, FileStack, Wrench, Sun, Moon } from 'lucide-react';
+import { Terminal, Grid, FileStack, Wrench, Sun, Moon, Cpu } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
 
 export function Layout() {
@@ -67,6 +67,20 @@ export function Layout() {
           >
             <Wrench className="w-5 h-5" />
             <span className="font-medium">Tools</span>
+          </NavLink>
+
+          <NavLink
+            to="/adb-fastboot"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                isActive
+                  ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                  : 'text-[var(--text-muted)] hover:bg-[var(--surface-alt)] hover:text-[var(--text)]'
+              }`
+            }
+          >
+            <Cpu className="w-5 h-5" />
+            <span className="font-medium">ADB & Fastboot</span>
           </NavLink>
         </div>
 

@@ -20,6 +20,8 @@ use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Once;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
 #[derive(Debug, Clone, Serialize)]
@@ -47,6 +49,7 @@ pub struct AdbStatResult {
     pub file_perm: u32,
     pub file_size: u32,
     pub mod_time: u32,
+    pub source: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -59,6 +62,7 @@ pub enum AdbRebootMode {
 }
 
 static TRANSFER_ACTIVE: AtomicBool = AtomicBool::new(false);
+static ADB_KEY_LOGGED: Once = Once::new();
 const ADB_PRIVATE_KEY_SIZE: usize = 2048;
 const ANDROID_PUBKEY_MODULUS_SIZE_WORDS: u32 = 64;
 
@@ -162,11 +166,19 @@ pub async fn adb_stat(
 
     match result {
         Ok(stat) => {
+            if stat.file_perm == 0 && stat.file_size == 0 && stat.mod_time == 0 {
+                if let Ok(shell_stat) = shell_stat_fallback(&mut device, &path) {
+                    emit_operation_complete(&app, &operation_id, true, None);
+                    return Ok(shell_stat);
+                }
+            }
+
             emit_operation_complete(&app, &operation_id, true, None);
             Ok(AdbStatResult {
                 file_perm: stat.file_perm,
                 file_size: stat.file_size,
                 mod_time: stat.mod_time,
+                source: "adb".to_string(),
             })
         }
         Err(err) => {
@@ -337,23 +349,13 @@ pub async fn adb_install(
         return Err(AppError::command(message));
     }
 
-    emit_operation_output(&app, &operation_id, &format!("Installing {apk_path}"), false);
-    let mut device = open_device(&device_id)?;
-    let result = device
-        .install(&apk_path, None)
-        .map_err(|err| map_adb_error(err, "ADB install failed"));
-
-    match result {
-        Ok(()) => {
-            emit_operation_complete(&app, &operation_id, true, None);
-            Ok(())
-        }
-        Err(err) => {
-            emit_operation_output(&app, &operation_id, &err.message(), true);
-            emit_operation_complete(&app, &operation_id, false, Some(err.message()));
-            Err(err)
-        }
-    }
+    emit_operation_output(
+        &app,
+        &operation_id,
+        &format!("Installing {apk_path} (push + pm install)"),
+        false,
+    );
+    fallback_pm_install(&app, &device_id, &apk_path, &operation_id)
 }
 
 #[tauri::command]
@@ -577,6 +579,61 @@ fn emit_output_bytes(app: &AppHandle, operation_id: &str, data: &[u8], is_stderr
     }
 }
 
+fn shell_stat_fallback(device: &mut ADBUSBDevice, path: &str) -> Result<AdbStatResult, AppError> {
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let command = format!("stat {path}");
+    device
+        .shell_command(&command, Some(&mut stdout), Some(&mut stderr))
+        .map_err(|err| map_adb_error(err, "ADB shell stat failed"))?;
+
+    let output = String::from_utf8_lossy(&stdout);
+    parse_shell_stat(&output).ok_or_else(|| AppError::command("Failed to parse shell stat"))
+}
+
+fn parse_shell_stat(output: &str) -> Option<AdbStatResult> {
+    let mut size: Option<u32> = None;
+    let mut perm: Option<u32> = None;
+    let mut mod_time: Option<u32> = None;
+
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("Size:") {
+            let parts: Vec<&str> = trimmed.split_whitespace().collect();
+            if parts.len() > 1 {
+                size = parts[1].parse::<u32>().ok();
+            }
+        }
+
+        if trimmed.starts_with("Access:") {
+            if let Some(start) = trimmed.find('(') {
+                if let Some(end) = trimmed[start + 1..].find('/') {
+                    let mode = &trimmed[start + 1..start + 1 + end];
+                    if let Ok(value) = u32::from_str_radix(mode, 8) {
+                        perm = Some(value);
+                    }
+                }
+            }
+        }
+
+        if trimmed.starts_with("Modify:") {
+            let value = trimmed.trim_start_matches("Modify:").trim();
+            if let Ok(parsed) = chrono::DateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S%.f %z") {
+                if let Ok(timestamp) = u32::try_from(parsed.timestamp()) {
+                    mod_time = Some(timestamp);
+                }
+            }
+        }
+    }
+
+    Some(AdbStatResult {
+        file_perm: perm.unwrap_or(0),
+        file_size: size.unwrap_or(0),
+        mod_time: mod_time.unwrap_or(0),
+        source: "shell".to_string(),
+    })
+}
+
 fn map_list_entry(entry: ADBListItemType) -> AdbListEntry {
     match entry {
         ADBListItemType::File(item) => map_list_item(item, "file"),
@@ -708,7 +765,10 @@ impl<W: Write> Write for ProgressWrite<W> {
 }
 
 fn ensure_adb_key_path() -> Result<PathBuf, AppError> {
-    let key_path = default_adb_key_path()?;
+    let (key_path, source) = resolve_adb_key_path()?;
+    ADB_KEY_LOGGED.call_once(|| {
+        log::info!("ADB key path ({source}): {}", key_path.display());
+    });
     if key_path.exists() {
         return Ok(key_path);
     }
@@ -735,7 +795,12 @@ fn ensure_adb_key_path() -> Result<PathBuf, AppError> {
     Ok(key_path)
 }
 
-fn default_adb_key_path() -> Result<PathBuf, AppError> {
+fn resolve_adb_key_path() -> Result<(PathBuf, &'static str), AppError> {
+    if let Ok(override_path) = std::env::var("ANTUMBRA_ADB_KEY_PATH") {
+        if !override_path.trim().is_empty() {
+            return Ok((PathBuf::from(override_path), "env"));
+        }
+    }
     let android_user_home = std::env::var("ANDROID_USER_HOME")
         .ok()
         .map(|path| PathBuf::from(path).join("android"));
@@ -743,7 +808,7 @@ fn default_adb_key_path() -> Result<PathBuf, AppError> {
     let base = android_user_home
         .or(home_dir)
         .ok_or_else(|| AppError::command("Failed to resolve home directory"))?;
-    Ok(base.join("adbkey"))
+    Ok((base.join("adbkey"), "default"))
 }
 
 fn encode_android_pubkey(private_key: &RsaPrivateKey) -> Result<String, AppError> {
@@ -780,13 +845,177 @@ fn encode_android_pubkey(private_key: &RsaPrivateKey) -> Result<String, AppError
 
 fn map_adb_error(err: RustADBError, context: &str) -> AppError {
     let message = err.to_string();
-    if message.contains("Wrong response command received")
-        || message.contains("Authentication required")
-        || message.contains("AUTH")
+    if message.contains("Expected CNXN")
+        || message.contains("Expected CLSE")
+        || message.contains("Expected STLS")
     {
-        return AppError::command(
-            "ADB authorization failed. Enable USB debugging and accept the prompt on the device",
-        );
+        return AppError::command(format!(
+            "ADB transport error. Device reset or handshake failed. Details: {message}"
+        ));
+    }
+    if message.contains("Authentication required")
+        || (message.contains("AUTH") && !message.contains("Expected CNXN"))
+    {
+        return AppError::command(format!(
+            "ADB authorization failed. Enable USB debugging and accept the prompt on the device. Details: {message}"
+        ));
+    }
+    if message.contains("Wrong response command received: WRTE")
+        || message.contains("WRTE. Expected OKAY")
+    {
+        return AppError::command(format!(
+            "ADB transfer failed. Check the remote path and device permissions. Details: {message}"
+        ));
     }
     AppError::command(format!("{context}: {message}"))
+}
+
+fn open_device_with_retry(
+    app: &AppHandle,
+    operation_id: &str,
+    device_id: &str,
+    attempts: usize,
+    delay: Duration,
+) -> Result<ADBUSBDevice, AppError> {
+    let mut last_error: Option<AppError> = None;
+    for attempt in 1..=attempts {
+        match open_device(device_id) {
+            Ok(mut device) => {
+                let mut stdout = Vec::new();
+                let mut stderr = Vec::new();
+                let result = device
+                    .shell_command(&"echo ok", Some(&mut stdout), Some(&mut stderr))
+                    .map_err(|err| map_adb_error(err, "ADB handshake failed"));
+                if result.is_ok() {
+                    emit_output_bytes(app, operation_id, &stdout, false);
+                    emit_output_bytes(app, operation_id, &stderr, true);
+                    return Ok(device);
+                }
+                last_error = result.err();
+            }
+            Err(err) => {
+                last_error = Some(err);
+            }
+        }
+
+        if attempt < attempts {
+            emit_operation_output(
+                app,
+                operation_id,
+                &format!("ADB connection failed; retrying ({attempt}/{attempts})..."),
+                false,
+            );
+            std::thread::sleep(delay);
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| AppError::command("Failed to open ADB device")))
+}
+
+fn fallback_pm_install(
+    app: &AppHandle,
+    device_id: &str,
+    apk_path: &str,
+    operation_id: &str,
+) -> Result<(), AppError> {
+    let _guard = acquire_transfer_guard(app, operation_id)?;
+    let file_name = Path::new(apk_path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| AppError::command("Failed to resolve APK filename"))?;
+    let remote_path = format!("/data/local/tmp/{file_name}");
+    emit_operation_output(
+        app,
+        operation_id,
+        &format!("Pushing APK to {remote_path}"),
+        false,
+    );
+
+    let local_path_ref = Path::new(apk_path);
+    let metadata = std::fs::metadata(local_path_ref)
+        .map_err(|err| AppError::command(format!("Failed to read APK: {err}")))?;
+    let total = metadata.len();
+    let file = std::fs::File::open(local_path_ref)
+        .map_err(|err| AppError::command(format!("Failed to open APK: {err}")))?;
+
+    let mut device = match open_device_with_retry(
+        app,
+        operation_id,
+        device_id,
+        3,
+        Duration::from_millis(400),
+    ) {
+        Ok(device) => device,
+        Err(err) => {
+            emit_operation_output(app, operation_id, &err.message(), true);
+            emit_operation_complete(app, operation_id, false, Some(err.message()));
+            return Err(err);
+        }
+    };
+    let emitter = ProgressEmitter::new(app.clone(), total, "write".into());
+    let mut reader = ProgressRead::new(file, total, emitter);
+    let push_result = device
+        .push(&mut reader, &remote_path)
+        .map_err(|err| map_adb_error(err, "ADB push failed"));
+    if let Err(err) = push_result {
+        emit_operation_output(app, operation_id, &err.message(), true);
+        emit_operation_complete(app, operation_id, false, Some(err.message()));
+        return Err(err);
+    }
+
+    emit_operation_output(app, operation_id, "Running pm install", false);
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let command = format!("pm install {remote_path}");
+    let result = device
+        .shell_command(&command, Some(&mut stdout), Some(&mut stderr))
+        .map_err(|err| map_adb_error(err, "ADB pm install failed"));
+
+    emit_output_bytes(app, operation_id, &stdout, false);
+    emit_output_bytes(app, operation_id, &stderr, true);
+
+    let install_output = String::from_utf8_lossy(&stdout);
+    let install_error = String::from_utf8_lossy(&stderr);
+
+    let cleanup_command = format!("rm -f {remote_path}");
+    let _ = device.shell_command(&cleanup_command, None, None);
+
+    match result {
+        Ok(code) => {
+            if let Some(exit_code) = code {
+                if exit_code != 0 {
+                    let message = format!("pm install failed with code {exit_code}");
+                    emit_operation_complete(app, operation_id, false, Some(message.clone()));
+                    return Err(AppError::command(message));
+                }
+            }
+
+            if install_output.contains("Success") {
+                emit_operation_complete(app, operation_id, true, None);
+                return Ok(());
+            }
+
+            if install_output.contains("Failure") || install_error.contains("Failure") {
+                let message = format!(
+                    "pm install failed: {}{}",
+                    install_output.trim(),
+                    if install_error.trim().is_empty() {
+                        ""
+                    } else {
+                        " (see stderr)"
+                    }
+                );
+                emit_operation_complete(app, operation_id, false, Some(message.clone()));
+                return Err(AppError::command(message));
+            }
+
+            emit_operation_complete(app, operation_id, true, None);
+            Ok(())
+        }
+        Err(err) => {
+            emit_operation_output(app, operation_id, &err.message(), true);
+            emit_operation_complete(app, operation_id, false, Some(err.message()));
+            Err(err)
+        }
+    }
 }

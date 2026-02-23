@@ -5,6 +5,7 @@ import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { Flasher } from './pages/Flasher';
 import { Tools } from './pages/Tools';
+import { AdbFastboot } from './pages/AdbFastboot';
 import { LogPanel } from './components/LogPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { UpdateAvailableModal } from './components/UpdateAvailableModal';
@@ -85,6 +86,7 @@ function AppContent() {
           <Route index element={<Dashboard />} />
           <Route path="flasher" element={<Flasher />} />
           <Route path="tools" element={<Tools />} />
+          <Route path="adb-fastboot" element={<AdbFastboot />} />
         </Route>
       </Routes>
       <Toaster position="bottom-right" />

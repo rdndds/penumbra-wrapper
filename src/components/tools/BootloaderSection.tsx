@@ -1,4 +1,4 @@
-import { AlertTriangle, Lock, Unlock } from 'lucide-react';
+import { Lock, Unlock } from 'lucide-react';
 
 interface BootloaderSectionProps {
   isConnected: boolean;
@@ -26,21 +26,6 @@ export function BootloaderSection({
           <p className="text-sm text-[var(--text-muted)] mt-1">
             Unlock or lock the device bootloader. <span className="text-[var(--warning)] font-semibold">WARNING:</span> These operations may wipe all data!
           </p>
-        </div>
-      </div>
-
-      <div className="bg-[var(--danger-soft)] border border-[var(--danger)] rounded-lg p-4 mb-4">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-[var(--danger)] flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-[var(--text)]">
-            <p className="font-semibold text-[var(--danger)] mb-1">Destructive Operations!</p>
-            <ul className="list-disc list-inside space-y-1 text-[var(--text-muted)]">
-              <li>Unlocking allows custom ROM installation but may void warranty</li>
-              <li>Locking prevents custom modifications but restores security</li>
-              <li>Both operations typically wipe all user data</li>
-              <li>Make sure you have backups before proceeding</li>
-            </ul>
-          </div>
         </div>
       </div>
 
