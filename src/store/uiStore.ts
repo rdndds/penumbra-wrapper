@@ -14,6 +14,11 @@ const applyTheme = (theme: ThemeMode) => {
   if (typeof document === 'undefined') return;
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.colorScheme = theme;
+  if (typeof window !== 'undefined') {
+    import('@tauri-apps/api/window')
+      .then(({ getCurrentWindow }) => getCurrentWindow().setTheme(theme))
+      .catch(() => undefined);
+  }
 };
 
 interface UIState {
