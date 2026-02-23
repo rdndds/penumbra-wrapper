@@ -46,10 +46,18 @@ This file orients coding agents to the Antumbra GUI repo. Keep changes aligned w
 - `verbatimModuleSyntax` is enabled; prefer `import type` for type-only imports.
 - `moduleResolution: "bundler"` with `allowImportingTsExtensions`.
 
+## ESLint Configuration
+ESLint is configured in `eslint.config.js` with these rules:
+- TypeScript recommended rules enabled
+- React Hooks rules enforced (`eslint-plugin-react-hooks`)
+- React Refresh rules for HMR compatibility
+- Restricted imports (see Lint Rules section)
+
 ## Code Style Guidelines
 
 ### Imports
 - Prefer type-only imports: `import type { AppError } from '../types';`.
+- Import order in components: React hooks → external libs → internal components/hooks → stores → utils
 - Keep import paths relative to module boundary conventions already used.
 - Preserve local file ordering if it has an established pattern.
 
@@ -58,6 +66,16 @@ This file orients coding agents to the Antumbra GUI repo. Keep changes aligned w
 - Semicolon usage is mixed (some files with, some without). Preserve the style of the file you touch.
 - Keep JSX formatting readable; break long props onto multiple lines.
 - Tailwind className strings are the primary styling mechanism.
+
+### React Component Patterns
+- Use named exports for components: `export function ComponentName()`.
+- Select specific properties from Zustand stores to prevent unnecessary re-renders:
+  ```typescript
+  const logs = useOperationStore((state) => state.logs);
+  const isRunning = useOperationStore((state) => state.isRunning);
+  ```
+- Use `useCallback` for event handlers passed to child components.
+- Use CSS variables from `src/index.css` for colors (e.g., `var(--text-muted)`, `var(--surface)`).
 
 ### Naming
 - Components: `PascalCase` (e.g., `LogPanel`).
@@ -116,10 +134,17 @@ This file orients coding agents to the Antumbra GUI repo. Keep changes aligned w
 - No Copilot rules found in `.github/copilot-instructions.md`.
 
 ## If You Add Tests
-- Add a `test` script to `package.json`.
-- Document the single-test command here (e.g., by file path or test name).
+- There is currently no test runner configured.
+- If you introduce tests, add a `test` script to `package.json` (e.g., `vitest` or `jest`).
+- Document the single-test command here (e.g., `npm test -- --run <file>` or `npm test -- <test-name>`).
 
 ## When in Doubt
 - Follow established patterns in the nearest file.
 - Keep UI consistent with existing layouts and styling.
 - Prefer small, well-scoped changes.
+
+## Working with this Repository
+- This is a Tauri v2 desktop application with React 19 and TypeScript.
+- The Tauri backend (`src-tauri/`) uses Rust; be careful when modifying native code.
+- Use the web dev server (`npm run dev`) for fast iteration on UI changes.
+- Only run Tauri dev/build when testing native functionality or building releases.
