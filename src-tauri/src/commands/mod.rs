@@ -5,6 +5,7 @@
 
 pub mod device;
 pub mod diagnostics;
+pub mod adb;
 pub mod erase;
 pub mod fastboot;
 pub mod fastboot_tools;

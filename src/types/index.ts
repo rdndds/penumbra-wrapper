@@ -18,6 +18,14 @@ export interface FlashProgress {
   operation: 'read' | 'write';
 }
 
+export interface OperationProgressEvent {
+  current: number;
+  total: number;
+  percentage: number;
+  partition_name: string;
+  operation: 'read' | 'write';
+}
+
 export interface LogEvent {
   id?: string;
   timestamp: string;
@@ -92,6 +100,29 @@ export interface FastbootDevice {
 export type FastbootRebootMode = 'normal' | 'bootloader' | 'recovery';
 
 export type FastbootSlot = 'a' | 'b';
+
+export interface AdbUsbDevice {
+  id: string;
+  vendorId: number;
+  productId: number;
+  description: string;
+}
+
+export interface AdbListEntry {
+  name: string;
+  entry_type: string;
+  size: number;
+  permissions: number;
+  modified_time: number;
+}
+
+export interface AdbStatResult {
+  file_perm: number;
+  file_size: number;
+  mod_time: number;
+}
+
+export type AdbRebootMode = 'normal' | 'bootloader' | 'recovery' | 'fastboot';
 
 export type OperationType = 'read' | 'write' | null;
 

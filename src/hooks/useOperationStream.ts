@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { useOperationStore } from '../store/operationStore';
+import type { OperationProgressEvent } from '../types';
 
 interface OperationOutputEvent {
   operation_id: string;
@@ -17,11 +18,12 @@ interface OperationCompleteEvent {
 }
 
 export function useOperationStream() {
-  const { addLog, finishOperation, setIsStreaming } = useOperationStore();
+  const { addLog, finishOperation, setIsStreaming, updateProgress } = useOperationStore();
 
   useEffect(() => {
     let unlistenOutput: UnlistenFn | null = null;
     let unlistenComplete: UnlistenFn | null = null;
+    let unlistenProgress: UnlistenFn | null = null;
     let isMounted = true;
 
     const setupListeners = async () => {
@@ -59,6 +61,12 @@ export function useOperationStream() {
         finishOperation(success, error);
         setIsStreaming(false);
       });
+
+      // Listen for operation progress
+      unlistenProgress = await listen<OperationProgressEvent>('operation:progress', (event) => {
+        if (!isMounted) return;
+        updateProgress(event.payload);
+      });
     };
 
     setupListeners();
@@ -72,6 +80,9 @@ export function useOperationStream() {
       if (unlistenComplete) {
         unlistenComplete();
       }
+      if (unlistenProgress) {
+        unlistenProgress();
+      }
     };
-  }, [addLog, finishOperation, setIsStreaming]);
+  }, [addLog, finishOperation, setIsStreaming, updateProgress]);
 }

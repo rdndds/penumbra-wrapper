@@ -11,6 +11,7 @@ import { PartitionApi } from '../services/api/partitionApi';
 import { DeviceApi } from '../services/api/deviceApi';
 import { FastbootApi } from '../services/api/fastbootApi';
 import { FastbootToolsApi } from '../services/api/fastbootToolsApi';
+import { AdbApi } from '../services/api/adbApi';
 import { executeOperation } from '../services/operations/executeOperation';
 import { ToolsHeader } from '../components/tools/ToolsHeader';
 import { ConnectionWarning } from '../components/tools/ConnectionWarning';
@@ -18,8 +19,17 @@ import { ReadAllSection } from '../components/tools/ReadAllSection';
 import { BootloaderSection } from '../components/tools/BootloaderSection';
 import { FastbootSection } from '../components/tools/FastbootSection';
 import { FastbootToolsSection } from '../components/tools/FastbootToolsSection';
+import { AdbToolsSection } from '../components/tools/AdbToolsSection';
 import type { FastbootStatusEvent } from '../types';
-import type { FastbootDevice, FastbootRebootMode, FastbootSlot } from '../types';
+import type {
+  AdbListEntry,
+  AdbRebootMode,
+  AdbStatResult,
+  AdbUsbDevice,
+  FastbootDevice,
+  FastbootRebootMode,
+  FastbootSlot,
+} from '../types';
 import toast from 'react-hot-toast';
 
 interface FastbootVarEntry {
@@ -50,11 +60,11 @@ const parseFastbootVarLines = (lines: string[]) => {
 
 
 export function Tools() {
-  const { daPath, preloaderPath, isConnected, isSettingsLoading } = useDeviceStore();
+  const { daPath, preloaderPath, isConnected, isSettingsLoading, defaultOutputPath } = useDeviceStore();
   const { partitions } = usePartitionStore();
-  const { addLog, clearLogs } = useOperationStore();
+  const { addLog, clearLogs, progress } = useOperationStore();
   const { confirm } = useConfirmation();
-  const { selectFile } = useFileSelection();
+  const { selectFile, saveFile } = useFileSelection();
 
   const [isReadAllRunning, setIsReadAllRunning] = useState(false);
   const [isSeccfgRunning, setIsSeccfgRunning] = useState(false);
@@ -78,6 +88,28 @@ export function Tools() {
   const [fastbootVarMap, setFastbootVarMap] = useState<Record<string, string>>({});
   const [skipPartitions, setSkipPartitions] = useState<Set<string>>(new Set());
   const fastbootToastId = useRef<string | undefined>(undefined);
+
+  const [adbDevices, setAdbDevices] = useState<AdbUsbDevice[]>([]);
+  const [selectedAdbDeviceId, setSelectedAdbDeviceId] = useState('');
+  const [isAdbRefreshing, setIsAdbRefreshing] = useState(false);
+  const [isAdbShellCommandRunning, setIsAdbShellCommandRunning] = useState(false);
+  const [isAdbFileRunning, setIsAdbFileRunning] = useState(false);
+  const [isAdbPackageRunning, setIsAdbPackageRunning] = useState(false);
+  const [isAdbSystemRunning, setIsAdbSystemRunning] = useState(false);
+  const [isAdbScreenshotRunning, setIsAdbScreenshotRunning] = useState(false);
+  const [isAdbAuthCheckRunning, setIsAdbAuthCheckRunning] = useState(false);
+  const [adbShellCommand, setAdbShellCommand] = useState('');
+  const [adbListPath, setAdbListPath] = useState('/sdcard');
+  const [adbStatPath, setAdbStatPath] = useState('');
+  const [adbListResults, setAdbListResults] = useState<AdbListEntry[]>([]);
+  const [adbStatResult, setAdbStatResult] = useState<AdbStatResult | null>(null);
+  const [adbPushLocalPath, setAdbPushLocalPath] = useState<string | null>(null);
+  const [adbPushRemotePath, setAdbPushRemotePath] = useState('');
+  const [adbPullRemotePath, setAdbPullRemotePath] = useState('');
+  const [adbPullLocalPath, setAdbPullLocalPath] = useState<string | null>(null);
+  const [adbInstallApkPath, setAdbInstallApkPath] = useState<string | null>(null);
+  const [adbUninstallPackage, setAdbUninstallPackage] = useState('');
+  const [adbTransferStatus, setAdbTransferStatus] = useState<string | null>(null);
 
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;
@@ -135,11 +167,35 @@ export function Tools() {
   }, []);
 
   useEffect(() => {
+    const loadAdbDevices = async () => {
+      setIsAdbRefreshing(true);
+      try {
+        const devices = await AdbApi.listDevices();
+        setAdbDevices(devices);
+        setSelectedAdbDeviceId((current) =>
+          devices.some((device) => device.id === current) ? current : ''
+        );
+      } catch {
+        toast.error('Failed to list ADB devices');
+      } finally {
+        setIsAdbRefreshing(false);
+      }
+    };
+
+    loadAdbDevices();
+  }, []);
+
+  useEffect(() => {
     setFastbootVarEntries([]);
     setFastbootVarRawLines([]);
     setFastbootVarMap({});
     setFastbootGetvarValue(null);
   }, [selectedFastbootDeviceId]);
+
+  useEffect(() => {
+    setAdbListResults([]);
+    setAdbStatResult(null);
+  }, [selectedAdbDeviceId]);
 
   const updateFastbootVarFromSingle = (key: string, value: string) => {
     setFastbootVarMap((current) => ({
@@ -579,6 +635,331 @@ export function Tools() {
     }
   };
 
+  const ensureAdbDevice = () => {
+    if (!selectedAdbDeviceId) {
+      toast.error('Select an ADB device first');
+      return false;
+    }
+    return true;
+  };
+
+  const handleRefreshAdbDevices = async () => {
+    if (isAdbRefreshing) return;
+    setIsAdbRefreshing(true);
+    try {
+      const devices = await AdbApi.listDevices();
+      setAdbDevices(devices);
+      setSelectedAdbDeviceId((current) =>
+        devices.some((device) => device.id === current) ? current : ''
+      );
+    } catch {
+      toast.error('Failed to list ADB devices');
+    } finally {
+      setIsAdbRefreshing(false);
+    }
+  };
+
+  const handleAdbShellCommand = async () => {
+    if (!ensureAdbDevice()) return;
+    if (!adbShellCommand.trim()) {
+      toast.error('Enter a shell command');
+      return;
+    }
+    if (isAdbShellCommandRunning) return;
+
+    setIsAdbShellCommandRunning(true);
+    try {
+      await executeOperation({
+        operation: 'ADB shell command',
+        type: 'read',
+        partitionName: 'adb',
+        partitionSize: 'shell',
+        successMessage: 'Shell command completed',
+        run: (operationId) =>
+          AdbApi.shellCommand(selectedAdbDeviceId, adbShellCommand.trim(), operationId),
+      });
+    } finally {
+      setIsAdbShellCommandRunning(false);
+    }
+  };
+
+  const handleAdbAuthCheck = async () => {
+    if (!ensureAdbDevice()) return;
+    if (isAdbAuthCheckRunning) return;
+
+    setIsAdbAuthCheckRunning(true);
+    try {
+      await executeOperation({
+        operation: 'ADB authorization check',
+        type: 'read',
+        partitionName: 'adb',
+        partitionSize: 'auth',
+        successMessage: 'ADB authorized',
+        openLogPanel: false,
+        clearLogs: false,
+        run: (operationId) => AdbApi.authCheck(selectedAdbDeviceId, operationId),
+      });
+    } finally {
+      setIsAdbAuthCheckRunning(false);
+    }
+  };
+
+  const handleAdbList = async () => {
+    if (!ensureAdbDevice()) return;
+    if (!adbListPath.trim()) {
+      toast.error('Enter a path to list');
+      return;
+    }
+    if (isAdbFileRunning) return;
+
+    setIsAdbFileRunning(true);
+    try {
+      await executeOperation({
+        operation: 'ADB list',
+        type: 'read',
+        partitionName: 'adb',
+        partitionSize: 'list',
+        successMessage: 'Directory listed',
+        run: (operationId) =>
+          AdbApi.list(selectedAdbDeviceId, adbListPath.trim(), operationId).then((entries) => {
+            setAdbListResults(entries);
+          }),
+      });
+    } finally {
+      setIsAdbFileRunning(false);
+    }
+  };
+
+  const handleAdbStat = async () => {
+    if (!ensureAdbDevice()) return;
+    if (!adbStatPath.trim()) {
+      toast.error('Enter a path to stat');
+      return;
+    }
+    if (isAdbFileRunning) return;
+
+    setIsAdbFileRunning(true);
+    try {
+      await executeOperation({
+        operation: 'ADB stat',
+        type: 'read',
+        partitionName: 'adb',
+        partitionSize: 'stat',
+        successMessage: 'Stat complete',
+        run: (operationId) =>
+          AdbApi.stat(selectedAdbDeviceId, adbStatPath.trim(), operationId).then((stat) => {
+            setAdbStatResult(stat);
+          }),
+      });
+    } finally {
+      setIsAdbFileRunning(false);
+    }
+  };
+
+  const handleSelectAdbPushLocal = async () => {
+    const path = await selectFile(DialogType.IMAGE_FILE, undefined, {
+      title: 'Select File to Push',
+      filters: [{ name: 'All Files', extensions: ['*'] }],
+    });
+    if (path) {
+      setAdbPushLocalPath(path);
+      toast.success('File selected');
+    }
+  };
+
+  const handleAdbPush = async () => {
+    if (!ensureAdbDevice()) return;
+    if (!adbPushLocalPath || !adbPushRemotePath.trim()) {
+      toast.error('Select a local file and remote path');
+      return;
+    }
+    if (isAdbFileRunning) return;
+
+    setIsAdbFileRunning(true);
+    setAdbTransferStatus('Pushing...');
+    try {
+      await executeOperation({
+        operation: 'ADB push',
+        type: 'write',
+        partitionName: 'adb',
+        partitionSize: 'push',
+        successMessage: 'Push completed',
+        run: (operationId) =>
+          AdbApi.push(
+            selectedAdbDeviceId,
+            adbPushLocalPath,
+            adbPushRemotePath.trim(),
+            operationId
+          ),
+      });
+    } finally {
+      setIsAdbFileRunning(false);
+      setAdbTransferStatus(null);
+    }
+  };
+
+  const handleSelectAdbPullLocal = async () => {
+    const path = await saveFile({
+      title: 'Save Pulled File',
+      filters: [{ name: 'All Files', extensions: ['*'] }],
+    });
+    if (path) {
+      setAdbPullLocalPath(path);
+      toast.success('Save path selected');
+    }
+  };
+
+  const handleAdbPull = async () => {
+    if (!ensureAdbDevice()) return;
+    if (!adbPullRemotePath.trim() || !adbPullLocalPath) {
+      toast.error('Select a remote path and save location');
+      return;
+    }
+    if (isAdbFileRunning) return;
+
+    setIsAdbFileRunning(true);
+    setAdbTransferStatus('Pulling...');
+    try {
+      await executeOperation({
+        operation: 'ADB pull',
+        type: 'read',
+        partitionName: 'adb',
+        partitionSize: 'pull',
+        successMessage: 'Pull completed',
+        run: (operationId) =>
+          AdbApi.pull(
+            selectedAdbDeviceId,
+            adbPullRemotePath.trim(),
+            adbPullLocalPath,
+            operationId
+          ),
+      });
+    } finally {
+      setIsAdbFileRunning(false);
+      setAdbTransferStatus(null);
+    }
+  };
+
+  const handleSelectAdbInstallApk = async () => {
+    const path = await selectFile(DialogType.IMAGE_FILE, undefined, {
+      title: 'Select APK File',
+      filters: [{ name: 'APK Files', extensions: ['apk'] }, { name: 'All Files', extensions: ['*'] }],
+    });
+    if (path) {
+      setAdbInstallApkPath(path);
+      toast.success('APK selected');
+    }
+  };
+
+  const handleAdbInstall = async () => {
+    if (!ensureAdbDevice()) return;
+    if (!adbInstallApkPath) {
+      toast.error('Select an APK first');
+      return;
+    }
+    if (isAdbPackageRunning) return;
+
+    setIsAdbPackageRunning(true);
+    try {
+      await executeOperation({
+        operation: 'ADB install',
+        type: 'write',
+        partitionName: 'adb',
+        partitionSize: 'install',
+        successMessage: 'Install completed',
+        run: (operationId) =>
+          AdbApi.install(selectedAdbDeviceId, adbInstallApkPath, operationId),
+      });
+    } finally {
+      setIsAdbPackageRunning(false);
+    }
+  };
+
+  const handleAdbUninstall = async () => {
+    if (!ensureAdbDevice()) return;
+    if (!adbUninstallPackage.trim()) {
+      toast.error('Enter a package name');
+      return;
+    }
+    if (isAdbPackageRunning) return;
+
+    setIsAdbPackageRunning(true);
+    try {
+      await executeOperation({
+        operation: 'ADB uninstall',
+        type: 'write',
+        partitionName: 'adb',
+        partitionSize: 'uninstall',
+        successMessage: 'Uninstall completed',
+        run: (operationId) =>
+          AdbApi.uninstall(selectedAdbDeviceId, adbUninstallPackage.trim(), operationId),
+      });
+    } finally {
+      setIsAdbPackageRunning(false);
+    }
+  };
+
+  const handleAdbSystemAction = async (action: string) => {
+    if (!ensureAdbDevice()) return;
+    if (isAdbSystemRunning) return;
+
+    setIsAdbSystemRunning(true);
+    try {
+      await executeOperation({
+        operation: `ADB ${action}`,
+        type: 'write',
+        partitionName: 'adb',
+        partitionSize: action,
+        successMessage: `ADB ${action} completed`,
+        run: (operationId) => AdbApi.systemAction(selectedAdbDeviceId, action, operationId),
+      });
+    } finally {
+      setIsAdbSystemRunning(false);
+    }
+  };
+
+  const handleAdbReboot = async (mode: AdbRebootMode) => {
+    if (!ensureAdbDevice()) return;
+    if (isAdbSystemRunning) return;
+
+    setIsAdbSystemRunning(true);
+    try {
+      await executeOperation({
+        operation: `ADB reboot ${mode}`,
+        type: 'write',
+        partitionName: 'adb',
+        partitionSize: 'reboot',
+        successMessage: `Rebooting to ${mode}`,
+        run: (operationId) => AdbApi.reboot(selectedAdbDeviceId, mode, operationId),
+      });
+    } finally {
+      setIsAdbSystemRunning(false);
+    }
+  };
+
+  const handleAdbScreenshot = async () => {
+    if (!ensureAdbDevice()) return;
+    if (!defaultOutputPath) {
+      toast.error('Set a default output path first');
+      return;
+    }
+    if (isAdbScreenshotRunning) return;
+
+    setIsAdbScreenshotRunning(true);
+    try {
+      await executeOperation({
+        operation: 'ADB screenshot',
+        type: 'read',
+        partitionName: 'adb',
+        partitionSize: 'framebuffer',
+        successMessage: 'Screenshot saved',
+        run: (operationId) => AdbApi.framebufferSave(selectedAdbDeviceId, operationId).then(() => undefined),
+      });
+    } finally {
+      setIsAdbScreenshotRunning(false);
+    }
+  };
+
   const backupCount = partitions.length - skipPartitions.size;
   const selectedFastbootDevice = fastbootDevices.find(
     (device) => device.id === selectedFastbootDeviceId
@@ -616,6 +997,9 @@ export function Tools() {
       : hasSlotSupport
         ? 'Set the active slot for A/B devices.'
         : 'Slots are not supported on this device.';
+
+  const adbTransferProgress = isAdbFileRunning && progress ? progress.percentage : null;
+  const adbTransferStatusLabel = isAdbFileRunning ? adbTransferStatus : null;
 
   return (
     <div className="h-screen bg-[var(--bg)] text-[var(--text)] flex flex-col">
@@ -689,6 +1073,53 @@ export function Tools() {
           onSetActiveSlot={handleFastbootSetActiveSlot}
           onReboot={handleFastbootReboot}
           onRebootFastbootd={handleFastbootRebootFastbootd}
+        />
+
+        <AdbToolsSection
+          devices={adbDevices}
+          selectedDeviceId={selectedAdbDeviceId}
+          isRefreshing={isAdbRefreshing}
+          isShellCommandRunning={isAdbShellCommandRunning}
+          isFileOperationRunning={isAdbFileRunning}
+          isPackageRunning={isAdbPackageRunning}
+          isSystemActionRunning={isAdbSystemRunning}
+          isScreenshotRunning={isAdbScreenshotRunning}
+          isAuthCheckRunning={isAdbAuthCheckRunning}
+          shellCommand={adbShellCommand}
+          listPath={adbListPath}
+          statPath={adbStatPath}
+          pushLocalPath={adbPushLocalPath}
+          pushRemotePath={adbPushRemotePath}
+          pullRemotePath={adbPullRemotePath}
+          pullLocalPath={adbPullLocalPath}
+          installApkPath={adbInstallApkPath}
+          uninstallPackage={adbUninstallPackage}
+          listResults={adbListResults}
+          statResult={adbStatResult}
+          transferProgress={adbTransferProgress}
+          transferStatus={adbTransferStatusLabel}
+          onRefresh={handleRefreshAdbDevices}
+          onAuthCheck={handleAdbAuthCheck}
+          onSelectDevice={setSelectedAdbDeviceId}
+          onShellCommandChange={setAdbShellCommand}
+          onRunShellCommand={handleAdbShellCommand}
+          onListPathChange={setAdbListPath}
+          onStatPathChange={setAdbStatPath}
+          onList={handleAdbList}
+          onStat={handleAdbStat}
+          onSelectPushLocal={handleSelectAdbPushLocal}
+          onPushRemoteChange={setAdbPushRemotePath}
+          onPush={handleAdbPush}
+          onSelectPullLocal={handleSelectAdbPullLocal}
+          onPullRemoteChange={setAdbPullRemotePath}
+          onPull={handleAdbPull}
+          onSelectInstallApk={handleSelectAdbInstallApk}
+          onInstall={handleAdbInstall}
+          onUninstallPackageChange={setAdbUninstallPackage}
+          onUninstall={handleAdbUninstall}
+          onSystemAction={handleAdbSystemAction}
+          onReboot={handleAdbReboot}
+          onScreenshot={handleAdbScreenshot}
         />
 
       </main>
